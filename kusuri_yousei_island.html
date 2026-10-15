@@ -1,0 +1,4271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>薬の妖精の島</title>
+<style>
+  :root{
+    --sky-top:#eaf7ee;
+    --sky-bottom:#dff3f5;
+    --sand:#f3dfa8;
+    --sand-shadow:#e2c988;
+    --grass:#8fc93a;
+    --grass-dark:#6fae2c;
+    --grass-deep:#5a9722;
+    --water:#7fd8e8;
+    --water-deep:#59c2d6;
+    --ink:#4a3c2a;
+    --panel:#fffaf0;
+    --panel-line:#e9dcc0;
+    --coral:#ff8fa3;
+    --coral-deep:#ef7089;
+    --sun:#ffcf6b;
+    --sun-deep:#f2ac2e;
+    --leaf:#4f9d3d;
+    font-family:"Hiragino Maru Gothic ProN","M PLUS Rounded 1c","Yu Gothic",sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--sky-bottom);}
+
+  #app{
+    position:relative;
+    width:100%;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    background:linear-gradient(180deg,var(--sky-top) 0%, var(--sky-bottom) 100%);
+  }
+
+  header{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 16px;
+    z-index:20;
+    position:relative;
+  }
+  .header-right{ display:flex; gap:8px; align-items:center; }
+  .top-btn{
+    border:none;
+    background:var(--panel);
+    color:var(--ink);
+    font-size:13px;
+    padding:8px 14px;
+    border-radius:999px;
+    box-shadow:0 3px 0 var(--panel-line);
+    cursor:pointer;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .top-btn:active{ transform:translateY(2px); box-shadow:0 1px 0 var(--panel-line); }
+  .top-btn.on{ background:var(--coral); color:#fff; box-shadow:0 3px 0 var(--coral-deep); }
+
+  #menuWrap{ position:relative; }
+  #menuDropdown{
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    background:var(--panel);
+    border-radius:16px;
+    box-shadow:0 6px 0 var(--panel-line), 0 10px 24px #0000001a;
+    padding:8px;
+    min-width:170px;
+    display:none;
+    flex-direction:column;
+    gap:4px;
+  }
+  #menuDropdown.show{ display:flex; }
+  .menu-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 12px;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:700;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .menu-item:hover, .menu-item:active{ background:#f6ecd6; }
+  .menu-item.on{ background:#fff0f3; color:var(--coral-deep); }
+  .menu-note{
+    font-size:10px;
+    color:#a99a7c;
+    padding:2px 12px 4px;
+  }
+
+  #stage-wrap{
+    flex:1 1 auto;
+    position:relative;
+    overflow:hidden;
+    touch-action:none;
+  }
+  #zoomControls{
+    position:absolute;
+    right:14px;
+    bottom:14px;
+    z-index:10;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .zoom-btn{
+    width:44px; height:44px;
+    border:none;
+    border-radius:50%;
+    background:var(--panel);
+    box-shadow:0 3px 0 var(--panel-line), 0 6px 14px #0000001a;
+    font-size:18px;
+    font-weight:800;
+    color:var(--ink);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .zoom-btn:active{ transform:translateY(2px); box-shadow:0 1px 0 var(--panel-line); }
+
+  #camera{
+    position:absolute;
+    left:50%; top:50%;
+    transition:none;
+    cursor:grab;
+  }
+  #camera.panning{ cursor:grabbing; }
+  svg#scene{
+    display:block;
+    overflow:visible;
+  }
+
+  .balloon-sway{
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    /* steps(96) ≈ 30 updates/sec over this 3.2s loop, instead of a
+       continuous (~60fps) interpolation — half the paint work for a sway
+       nobody needs to see at full smoothness */
+    animation: balloonSway 3.2s steps(96, end) infinite;
+  }
+  @keyframes balloonSway{
+    0%,100% { transform: rotate(-6deg); }
+    50%     { transform: rotate(6deg); }
+  }
+
+  .foam-pulse{
+    opacity:0.3;
+    /* steps() ≈ 20 updates/sec over this 3.6s loop instead of continuous
+       (~60fps) interpolation, same trick used for the balloon/virus sway —
+       this one runs forever (not bounded to a happening), so it's worth
+       doing. Also lost its blur filter — a flat, soft-colour edge instead
+       of a blurred one, which was a full composited filter layer x6
+       (one per body part) running all the time for not much visible gain. */
+    animation: foamPulse 3.6s steps(72, end) infinite;
+  }
+  @keyframes foamPulse{
+    0%,100% { opacity: 0.22; }
+    50%     { opacity: 0.4; }
+  }
+
+  /* flowers hold a fixed pose now — no continuous per-flower animation
+     running at all (there can be ~60 of them on screen at once) */
+  .flower-sway{
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+
+  /* grass, like the flowers, now holds a still pose — no continuously
+     running per-tuft animation */
+  .grass-sway{
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+
+  .whirl-spin{
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    animation: whirlSpin 1.6s linear infinite;
+  }
+  @keyframes whirlSpin{
+    100% { transform: rotate(360deg); }
+  }
+  .whirl-ripple{
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    animation: whirlRipple 2.4s ease-in-out infinite;
+  }
+  @keyframes whirlRipple{
+    0%,100% { transform: scale(0.94); opacity: 0.5; }
+    50%     { transform: scale(1.06); opacity: 0.2; }
+  }
+
+  .virus-bob{
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    /* steps() to match the ~30fps rate the JS-driven drift/rotation also
+       uses now, instead of a continuous interpolation */
+    animation: virusBob 2.1s steps(63, end) infinite;
+  }
+  @keyframes virusBob{
+    0%,100% { transform: translateY(-2px) rotate(-4deg); }
+    50%     { transform: translateY(2px) rotate(4deg); }
+  }
+
+  .steam-rise{
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: steamRise 2.6s ease-in infinite;
+  }
+  @keyframes steamRise{
+    0%   { transform: translateY(0) scale(1);   opacity: 0; }
+    15%  { opacity: 0.7; }
+    80%  { opacity: 0; }
+    100% { transform: translateY(-14px) scale(1.15); opacity: 0; }
+  }
+
+  /* rock / spiderweb / whirlpool: invisible until a happening reveals
+     them; visible-but-dim in edit mode so they can still be placed and
+     repositioned. Tapping the revealed one sends a fairy running over,
+     which then shrinks it away over ~3 seconds. */
+  .happening-hidden{ opacity:0; pointer-events:none; transition:opacity .25s ease; }
+  body.editing .happening-hidden{ opacity:0.35; pointer-events:auto; }
+  .happening-active{ cursor:pointer; }
+  .happening-active:hover .happening-shrink{ filter:brightness(1.12); }
+
+  /* the inner "shrink" wrapper — always present so the transition below
+     is already active by the time .happening-shrinking gets added */
+  .happening-shrink{
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    transition: transform 3s ease-in, opacity 3s ease-in;
+  }
+  .happening-shrink.happening-shrinking{
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  .happening-wilted{ cursor:pointer; }
+  .flower-sway{ transition: transform 0.6s ease, filter 3s ease; } /* static droop pose fades in/out smoothly instead of animating continuously */
+  /* wilted: keep the flower's own colours, just droop it into a fixed,
+     tired-looking pose instead of turning it grey (and instead of the
+     old continuously-animating droop — a still pose reads just as clearly) */
+  .happening-wilted .flower-sway{
+    transform: rotate(33deg) scale(0.95);
+  }
+
+  .virus-root{ transform-box: fill-box; transform-origin:50% 50%; }
+
+  /* NOTE: the old .happening-attention (filter:drop-shadow glow) is gone —
+     every happening now uses the cheaper .attention-spark defined above,
+     added/removed as an actual element instead of toggled by class.
+     (.field-zone, used by the old whole-patch flower zone, is gone too —
+     gutflora now targets one specific flower object like everything else.) */
+  /* shared "please tap me" cue for every happening (rock / spiderweb /
+     whirlpool / hot spring / virus / flower patch). Deliberately NOT a
+     filter:drop-shadow (that's a blur + its own compositing layer per
+     element — noticeably heavier than plain opacity/transform, and
+     the flower patch alone can mean ~60 of these glowing at once).
+     A radial-gradient dot animated with opacity/scale only composites
+     cheaply on the GPU no matter how many are on screen together. */
+  .attention-spark{
+    opacity:.3;
+    transform-box: fill-box; transform-origin:50% 50%;
+    animation: attentionSparkPulse 1s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes attentionSparkPulse{
+    0%,100% { opacity:.28; transform:scale(0.82); }
+    50%     { opacity:.9;  transform:scale(1.1); }
+  }
+
+  /* hot spring: steam only shows while the fever happening is active */
+  .steam-group{
+    opacity:0; transition:opacity .3s ease;
+    transform-box: fill-box; transform-origin: 50% 100%;
+  }
+  .onsen-steaming .steam-group{ opacity:1; }
+  .onsen-steaming{ cursor:pointer; }
+  .steam-group.steam-shrinking{
+    transition: opacity 3s ease-in, transform 3s ease-in;
+    opacity:0; transform:scale(0.25) translateY(6px);
+  }
+
+  .onsen-spark{
+    fill:#ffe066;
+    animation: sparkPop 0.8s ease-out forwards;
+    transform-box: fill-box; transform-origin:50% 50%;
+  }
+  @keyframes sparkPop{
+    0%   { opacity:0; transform:scale(0.4) translateY(0); }
+    30%  { opacity:1; transform:scale(1.15) translateY(-6px); }
+    100% { opacity:0; transform:scale(0.9) translateY(-20px); }
+  }
+
+  .fairy-group{ cursor:grab; }
+  .fairy-group.dragging{ cursor:grabbing; }
+  .fairy-ring{
+    fill:none;
+    stroke:#fff;
+    stroke-width:4;
+    stroke-dasharray:2 8;
+    opacity:0;
+    transition:opacity .15s;
+    pointer-events:none;
+  }
+  .fairy-group.selected .fairy-ring{ opacity:.9; }
+
+  .placed-obj{ pointer-events:none; }
+  body.erase-mode .placed-obj{ pointer-events:auto; cursor:pointer; }
+  .placed-path{ pointer-events:none; }
+  body.erase-mode .placed-path{ pointer-events:auto; cursor:pointer; }
+  .ghost-preview{ pointer-events:none; }
+
+
+  /* BUGFIX: rock/spiderweb/whirlpool/hotspring/flower are also
+     .placed-obj (from placeObject), so the rule above was silently
+     blocking every tap on them outside of eraser mode — that was the
+     actual reason clicking did nothing. This class opts them back in.
+     Higher specificity (2 classes) beats the plain .placed-obj rule
+     regardless of source order. */
+  .placed-obj.happening-tappable{ pointer-events:auto; }
+  .placed-obj.happening-hidden{ pointer-events:none !important; }
+  body.editing .placed-obj.happening-hidden{ pointer-events:auto !important; }
+
+  /* debug view: reveals the actual invisible tap/hit areas in red so
+     it's easy to check they line up with what's on screen. Toggle from
+     the menu — purely a diagnostic aid, safe to remove later. */
+  body.debug-hitareas .happening-hit-area{
+    fill:#ff2d55 !important;
+    stroke:#ff2d55; stroke-width:1.5;
+    opacity:0.35 !important;
+  }
+
+  /* ---- bottom UI ---- */
+  #dock{
+    flex:0 0 auto;
+    position:relative;
+    z-index:5;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg, transparent, #ffffffcc 30%);
+    display:block;
+  }
+  #palette{
+    display:flex;
+    gap:6px;
+    /* items now shrink/grow to fit the available width (see .palette-item
+       flex-basis below) instead of overflowing into a horizontal scroll —
+       a scrollbar here is easy to miss entirely, especially since nothing
+       hinted that there were more icons off to the side */
+    overflow:visible;
+    padding:8px 8px 24px; /* extra bottom room for the label text below each icon, which used to get clipped */
+    background:var(--panel);
+    border-radius:22px;
+    box-shadow:0 4px 0 var(--panel-line), 0 8px 20px #0000000f;
+  }
+  .palette-item{
+    /* shares available width equally with the other items, shrinking
+       together to fit any screen without scrolling; capped so it doesn't
+       balloon on a wide/tablet screen */
+    flex:1 1 0;
+    min-width:0;
+    max-width:60px;
+    aspect-ratio:1;
+    border-radius:16px;
+    border:2px solid transparent;
+    background:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:26px;
+    cursor:pointer;
+    position:relative;
+  }
+  .palette-item.active{
+    border-color:var(--coral);
+    background:#fff0f3;
+    transform:translateY(-3px);
+  }
+  .palette-item.eraser.active{
+    border-color:#c96a4e;
+    background:#fdece5;
+  }
+  .palette-item span.label{
+    position:absolute;
+    bottom:-16px;
+    font-size:9px;
+    color:var(--ink);
+    white-space:nowrap;
+  }
+  .palette-icon-svg{
+    width:70%;
+    height:70%;
+    overflow:visible;
+    pointer-events:none;
+  }
+
+  #camera, #scene{ touch-action:none; }
+
+  .river-path{ pointer-events:none; }
+
+  #hint{
+    position:absolute;
+    left:0; right:0; top:10px;
+    display:flex;
+    justify-content:center;
+    pointer-events:none;
+    z-index:15;
+  }
+  #hint span{
+    background:#4a3c2ae0;
+    color:#fff;
+    font-size:12px;
+    padding:6px 14px;
+    border-radius:999px;
+    opacity:0;
+    transition:opacity .25s;
+  }
+  #hint span.show{ opacity:1; }
+
+  /* 到着演出：スキップボタンと、場所をばらけさせるときの暗転 */
+  #arrivalFade{
+    position:absolute; inset:0; z-index:16;
+    background:#16303b;
+    opacity:0; pointer-events:none;
+    transition:opacity .6s ease;
+  }
+  #arrivalFade.show{ opacity:1; pointer-events:auto; }
+  #arrivalSkipBtn{
+    display:none;
+    position:absolute; right:12px; top:12px; z-index:17;
+    border:none; border-radius:999px;
+    padding:9px 16px;
+    background:var(--panel);
+    box-shadow:0 3px 0 var(--panel-line), 0 6px 14px #0000001a;
+    font-size:13px; font-weight:800; color:var(--ink);
+    cursor:pointer;
+  }
+  #arrivalSkipBtn.show{ display:block; }
+  #arrivalSkipBtn:active{ transform:translateY(2px); box-shadow:0 1px 0 var(--panel-line); }
+
+  #happeningCounter{
+    display:flex;
+    align-items:center;
+  }
+  #happeningCounter span{
+    display:inline-block;
+    white-space:nowrap;
+    background:#ffe3a3e0;
+    color:#8a5a1a;
+    font-size:12px;
+    font-weight:800;
+    padding:7px 14px;
+    border-radius:999px;
+    box-shadow:0 3px 0 #e0b465, 0 6px 14px #0000001a;
+    opacity:0;
+    transform:scale(0.85);
+    transition:opacity .2s ease, transform .2s ease;
+  }
+  #happeningCounter span.show{ opacity:1; transform:scale(1); }
+
+  /* ---- night mode: shown once every happening on the island has been
+     dealt with, blocks interaction for a short break, then clears itself.
+     See NIGHT_DURATION_SEC — set short for testing. ---- */
+  #nightOverlay{
+    position:fixed; inset:0;
+    z-index:1000;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background:radial-gradient(ellipse at 50% 30%, #2d3f78 0%, #1a2350 55%, #0e1230 100%);
+    animation: nightFadeIn 1.1s ease both;
+  }
+  #nightOverlay.show{ display:flex; }
+  @keyframes nightFadeIn{
+    from{ opacity:0; }
+    to{ opacity:1; }
+  }
+  #nightStars{
+    position:absolute; inset:0;
+    background-image:
+      radial-gradient(#fff 1.5px, transparent 1.5px),
+      radial-gradient(#fff 1px, transparent 1px),
+      radial-gradient(#fff 1px, transparent 1px);
+    background-size: 180px 180px, 130px 130px, 90px 90px;
+    background-position: 20px 30px, 90px 110px, 40px 150px;
+    opacity:.55;
+  }
+  #nightCard{
+    position:relative;
+    text-align:center;
+    color:#fff;
+    padding:28px 34px;
+    background:#ffffff14;
+    border:2px solid #ffffff33;
+    border-radius:28px;
+    backdrop-filter: blur(2px);
+  }
+  #nightMoon{
+    font-size:52px;
+    animation: nightMoonBob 3s ease-in-out infinite;
+  }
+  @keyframes nightMoonBob{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-8px); }
+  }
+  #nightCard p{
+    margin:6px 0 0;
+    font-weight:800;
+  }
+  #nightMsg1, #nightMsg2{ font-size:16px; }
+  #nightTimer{
+    margin-top:14px;
+    font-size:22px;
+    color:#ffe3a3;
+    letter-spacing:.02em;
+  }
+  /* while night mode is up, nothing beneath it should be interactive —
+     the overlay itself (fixed, full-screen, above everything) already
+     intercepts all taps, so nothing else needs to change per-element */
+
+  #info-panel{
+    position:absolute;
+    right:12px;
+    top:56px;
+    width:180px;
+    background:var(--panel);
+    border-radius:16px;
+    padding:12px;
+    box-shadow:0 4px 0 var(--panel-line);
+    transform:translateX(220px);
+    transition:transform .25s ease;
+    z-index:6;
+    font-size:12px;
+    color:var(--ink);
+  }
+  #info-panel.show{ transform:translateX(0); }
+  #info-panel h3{ margin:0 0 4px; font-size:14px; }
+  #info-panel p{ margin:2px 0; line-height:1.5; }
+  #info-panel .close-x{
+    position:absolute; top:6px; right:8px; cursor:pointer; font-size:14px; color:#a99a7c;
+  }
+  #infoFairyStoreBtn{
+    display:none; /* shown only for a fairy the person actually earned — not the fixed cast — see the JS that toggles this */
+    width:100%;
+    margin-top:10px;
+    padding:8px 6px;
+    border:none;
+    border-radius:12px;
+    background:#f3ece0;
+    color:#8a5a1a;
+    font-size:11px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  #infoFairyStoreBtn:active{ background:#ebe0cf; }
+  #infoFairyStoreBtn.show{ display:block; }
+
+  /* ---------- 妖精ずかん（表示上限まわり） ---------- */
+  #fairyAlbumModal{
+    display:none;
+    position:fixed; inset:0; z-index:90;
+    background:#3a2c1acc;
+    align-items:center; justify-content:center;
+    padding:20px;
+  }
+  #fairyAlbumModal.show{ display:flex; }
+  #fairyAlbumCard{
+    background:var(--panel);
+    border-radius:20px;
+    max-width:420px; width:100%;
+    max-height:80vh; overflow-y:auto;
+    padding:20px 22px 26px;
+    box-shadow:0 10px 0 var(--panel-line);
+  }
+  #fairyAlbumHead{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:6px;
+  }
+  #fairyAlbumHead h2{ margin:0; font-size:17px; color:var(--ink); }
+  #fairyAlbumHead .close-x{
+    cursor:pointer; font-size:16px; color:var(--ink);
+    width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  #fairyAlbumHead .close-x:hover{ background:#f6ecd6; }
+  #fairyAlbumCount{ margin:0; font-size:13px; font-weight:800; color:var(--coral-deep); }
+  .album-hint{ margin:4px 0 14px; font-size:11.5px; color:#8a7a5c; line-height:1.5; }
+  .album-empty{ font-size:12.5px; color:#8a7a5c; }
+  .album-row{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 0;
+    border-top:1px solid var(--panel-line);
+  }
+  .album-row:first-child{ border-top:none; }
+  .album-icon{
+    width:44px; height:44px; border-radius:50%;
+    flex-shrink:0;
+    overflow:hidden;
+    background:#ffffffaa;
+    box-shadow:inset 0 0 0 1.5px #00000022;
+  }
+  .album-icon-svg{
+    width:100%; height:100%;
+    display:block;
+    pointer-events:none;
+  }
+  .album-info{ flex:1 1 auto; min-width:0; }
+  .album-name{ font-size:12.5px; font-weight:700; color:var(--ink); }
+  .album-count{ font-size:10.5px; color:#8a7a5c; }
+  .album-btn{
+    flex-shrink:0;
+    font-size:10.5px; font-weight:700;
+    padding:6px 9px;
+    border:none; border-radius:10px;
+    background:#f3ece0; color:#8a5a1a;
+    cursor:pointer;
+  }
+  .album-btn:disabled{ opacity:0.35; cursor:default; }
+  .album-btn:not(:disabled):active{ background:#ebe0cf; }
+
+  /* ---------- 妖精ゲット演出（ガチャ / 確定入手） ---------- */
+  #youseiGetOverlay{
+    display:none;
+    position:fixed; inset:0; z-index:100;
+    background:radial-gradient(circle at 50% 40%, #fff8e0f0, #4a3c2aef);
+    align-items:center; justify-content:center;
+    padding:20px;
+  }
+  #youseiGetOverlay.show{ display:flex; }
+  #youseiGetCard{
+    background:var(--panel);
+    border-radius:24px;
+    max-width:360px; width:100%;
+    padding:22px 22px 26px;
+    text-align:center;
+    box-shadow:0 10px 0 var(--panel-line);
+    animation:youseiPop .35s ease;
+  }
+  @keyframes youseiPop{
+    0%{ transform:scale(0.7); opacity:0; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+  #youseiGetKind{
+    display:inline-block;
+    font-size:12px; font-weight:800;
+    color:var(--coral-deep);
+    background:#fff0f3;
+    padding:4px 12px;
+    border-radius:999px;
+    margin-bottom:8px;
+  }
+  #youseiGetStage{
+    width:180px; height:200px;
+    margin:0 auto 6px;
+  }
+  #youseiGetStage svg{ width:100%; height:100%; overflow:visible; }
+  #youseiGetName{ font-size:17px; font-weight:800; color:var(--ink); margin-bottom:6px; }
+  #youseiGetDesc{ font-size:12.5px; color:var(--ink); line-height:1.7; margin-bottom:14px; }
+  #youseiGetCount{ font-size:11px; color:#a99a7c; margin-bottom:12px; }
+  #youseiGetStoredNote{ display:none; font-size:11px; color:#8a5a1a; background:#fff3d6; border-radius:10px; padding:6px 8px; margin:-6px 0 10px; }
+  #youseiGetStoredNote.show{ display:block; }
+  #youseiGetNextBtn{
+    border:none;
+    background:var(--coral);
+    color:#fff;
+    font-weight:800;
+    font-size:14px;
+    padding:11px 28px;
+    border-radius:999px;
+    box-shadow:0 3px 0 var(--coral-deep);
+    cursor:pointer;
+  }
+  #youseiGetNextBtn:active{ transform:translateY(2px); box-shadow:0 1px 0 var(--coral-deep); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="happeningCounter"><span id="happeningCounterText"></span></div>
+    <div class="header-right">
+      <div id="menuWrap">
+        <button class="top-btn" id="menuBtn">☰ メニュー</button>
+        <div id="menuDropdown">
+          <div class="menu-item" id="fairyAlbumBtn">🗂️ 妖精ずかん</div>
+          <div class="menu-item" id="backToAppBtn">🏠 メイン画面に戻る</div>
+          <div class="menu-item" id="triggerHappeningBtn">🎲 ハプニングを今すぐ起こす（テスト用）</div>
+          <div class="menu-item" id="toggleHitAreaBtn">🔍 当たり判定を表示（デバッグ用）</div>
+          <div class="menu-item" id="exportFlowersBtn">🌸 花の位置を出力（デバッグ用）</div>
+          <div class="menu-item" id="addDebugFairyBtn">➕ 妖精を1体増やす（デバッグ用）</div>
+          <div class="menu-note">今後ここに他の機能も追加予定</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="hint"><span id="hintText"></span></div>
+
+  <div id="nightOverlay">
+    <div id="nightStars"></div>
+    <div id="nightCard">
+      <div id="nightMoon">🌙</div>
+      <p id="nightMsg1">わるいところはなおったよ！</p>
+      <p id="nightMsg2">ぐっすりねてげんきになろう！</p>
+      <p id="nightTimer"></p>
+    </div>
+  </div>
+
+  <div id="info-panel">
+    <span class="close-x" id="infoClose">✕</span>
+    <h3 id="infoName">-</h3>
+    <p id="infoDesc">-</p>
+    <button id="infoFairyStoreBtn">🗂️ 妖精ずかんにしまう</button>
+  </div>
+
+  <div id="stage-wrap">
+    <div id="arrivalFade"></div>
+    <button id="arrivalSkipBtn" type="button">⏩ スキップ</button>
+    <div id="zoomControls">
+      <button class="zoom-btn" id="zoomResetBtn" title="島全体を見る（俯瞰）">🌐</button>
+      <button class="zoom-btn" id="zoomInBtn" title="拡大">＋</button>
+      <button class="zoom-btn" id="zoomOutBtn" title="縮小">－</button>
+    </div>
+    <div id="camera">
+      <svg id="scene" width="3600" height="5400" viewBox="900 250 3600 5400" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="waterGrad" cx="50%" cy="40%" r="70%">
+            <stop offset="0%" stop-color="var(--water)"/>
+            <stop offset="100%" stop-color="var(--water-deep)"/>
+          </radialGradient>
+          <radialGradient id="grassGrad" cx="45%" cy="35%" r="75%">
+            <stop offset="0%" stop-color="var(--grass)"/>
+            <stop offset="100%" stop-color="var(--grass-dark)"/>
+          </radialGradient>
+          <radialGradient id="seaGrad" cx="50%" cy="42%" r="75%">
+            <stop offset="0%" stop-color="#7fe0e8"/>
+            <stop offset="55%" stop-color="#4bb8d8"/>
+            <stop offset="100%" stop-color="#2c8cc0"/>
+          </radialGradient>
+          <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#2c220f" flood-opacity="0.2"/>
+          </filter>
+          <filter id="tinyShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#2c220f" flood-opacity="0.25"/>
+          </filter>
+          <filter id="softBlur4" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="4"/>
+          </filter>
+          <radialGradient id="rockGrad" cx="35%" cy="22%" r="85%">
+            <stop offset="0%" stop-color="#d9d5cb"/>
+            <stop offset="50%" stop-color="#a8a398"/>
+            <stop offset="100%" stop-color="#6f6a60"/>
+          </radialGradient>
+          <radialGradient id="whirlGrad" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#0e4f73"/>
+            <stop offset="55%" stop-color="#3a92c2"/>
+            <stop offset="100%" stop-color="#9fdcf0"/>
+          </radialGradient>
+          <!-- soft yellow dot used for the "tap me" cue on every happening —
+               a plain gradient fill instead of a blurred filter, see .attention-spark -->
+          <radialGradient id="flowerGlowGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#fff3b0" stop-opacity="0.95"/>
+            <stop offset="55%" stop-color="#ffd400" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="#ffd400" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="onsenRimGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#a97c4f"/>
+            <stop offset="100%" stop-color="#7c5836"/>
+          </linearGradient>
+          <radialGradient id="onsenWaterGrad" cx="50%" cy="35%" r="70%">
+            <stop offset="0%" stop-color="#eafaff"/>
+            <stop offset="60%" stop-color="#bfeaf5"/>
+            <stop offset="100%" stop-color="#8fd2e8"/>
+          </radialGradient>
+        </defs>
+
+        <!-- ================= SEA (fills the canvas behind the island) ================= -->
+        <rect id="seaBase" x="900" y="250" width="3600" height="5400" fill="url(#seaGrad)"/>
+        <g id="seaFoam"></g>
+
+        <!-- ================= ISLAND BASE (humanoid silhouette, built in JS) ================= -->
+        <g id="islandBase" filter="url(#softShadow)"></g>
+
+        <g id="islandGrass"></g>
+
+        <g id="pond">
+          <ellipse cx="2960" cy="2580" rx="236" ry="152" fill="var(--sand)"/>
+          <ellipse cx="2960" cy="2580" rx="190" ry="116" fill="url(#waterGrad)"/>
+          <ellipse cx="2900" cy="2540" rx="56" ry="24" fill="#ffffff55"/>
+        </g>
+
+        <g id="forestCluster"></g>
+        <g id="libraryCluster"></g>
+
+        <!-- river: above the pond, but below the flowers/objects on top of it -->
+        <g id="riverLayer"></g>
+
+        <!-- paths: freehand-drawn dirt trails, same idea as the river -->
+        <g id="pathLayer"></g>
+
+        <!-- decorLayer: every placed object (trees/flowers/grass/fences/
+             houses, plus the normally-hidden rock/spiderweb/whirlpool/
+             hotspring happening markers) lives here in ONE shared group,
+             kept sorted by y (see reorderDecorLayer) so anything lower on
+             screen draws in front — a simple painter's-algorithm depth cue.
+             Used to be two separate always-stacked groups (ground/top);
+             merged so top-type objects like houses can also correctly
+             layer against ground-type ones instead of always being drawn
+             on top regardless of position. -->
+        <g id="decorLayer"></g>
+        <g id="lungCluster"></g>
+
+        <!-- a rock/spiderweb/whirlpool/hot spring/flower patch/virus gets
+             moved in here for as long as its happening is active (see
+             bringToHappeningFront in JS), so it's never covered up by
+             ordinary decorations and impossible to tap -->
+        <g id="happeningsLayer"></g>
+
+        <!-- fairies drawn LAST, after happeningsLayer, so a fairy running
+             over to fix something stays visible instead of disappearing
+             behind it (rendering priority: characters > happenings >
+             everything else, the latter y-sorted) -->
+        <g id="fairiesLayer"></g>
+      </svg>
+    </div>
+  </div>
+
+  <div id="dock">
+    <div id="palette"></div>
+  </div>
+</div>
+
+<!-- ================= 妖精ずかん：表示上限を超えた分をしまっておき、
+     呼び出して入れ替えられるようにするパネル ================= -->
+<div id="fairyAlbumModal">
+  <div id="fairyAlbumCard">
+    <div id="fairyAlbumHead">
+      <h2>🗂️ 妖精ずかん</h2>
+      <span class="close-x" id="fairyAlbumClose">✕</span>
+    </div>
+    <p id="fairyAlbumCount"></p>
+    <p class="album-hint">島には一度に30体まで表示できるよ。集めた妖精はぜんぶちゃんと記録されているから、好きにしまったり呼んだりして大丈夫。</p>
+    <div id="fairyAlbumList"></div>
+  </div>
+</div>
+
+<!-- ================= 妖精ゲット演出（ガチャ/確定入手の全画面オーバーレイ） ================= -->
+<div id="youseiGetOverlay">
+  <div id="youseiGetCard">
+    <div id="youseiGetKind"></div>
+    <div id="youseiGetStage"></div>
+    <div id="youseiGetName"></div>
+    <div id="youseiGetDesc"></div>
+    <div id="youseiGetStoredNote">島がにぎやかなので、いったん妖精ずかんにしまっておいたよ</div>
+    <div id="youseiGetCount"></div>
+    <button id="youseiGetNextBtn" type="button">つぎへ</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs) => {
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+const clamp = (v,min,max) => Math.max(min, Math.min(max, v));
+
+/* ============================================================
+   1b. ISLAND SILHOUETTE — deformed humanoid: head / neck / torso /
+       arms / legs, all defined once and reused for both drawing
+       and walkable-area hit testing.
+   ============================================================ */
+const BODY_PARTS = [
+  {name:"head",  type:"pacman",    cx:2700, cy:1190, r:594, mouthAngle:180, mouthWidth:70, grassMargin:140},
+  {name:"torso", type:"roundrect", cx:2700, cy:2700, w:1440, h:2400, rx:390, grassMargin:100},
+  {name:"armL",  type:"ellipse",   cx:1770, cy:2070, rx:588, ry:300, rot:-35, grassMargin:90},
+  {name:"armR",  type:"ellipse",   cx:3630, cy:2070, rx:588, ry:300, rot:35,  grassMargin:90},
+  {name:"legL",  type:"ellipse",   cx:2280, cy:4410, rx:330, ry:900, rot:-8,  grassMargin:90},
+  {name:"legR",  type:"ellipse",   cx:3120, cy:4410, rx:330, ry:900, rot:8,   grassMargin:90}
+];
+
+function pacmanPath(cx, cy, r, mouthAngle, mouthWidth){
+  const a1 = (mouthAngle + mouthWidth/2) * Math.PI/180;
+  const a2 = (mouthAngle - mouthWidth/2) * Math.PI/180;
+  const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+  const x2 = cx + r*Math.cos(a2), y2 = cy + r*Math.sin(a2);
+  const largeArc = (360 - mouthWidth) > 180 ? 1 : 0;
+  return `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
+}
+function inPacman(x, y, cx, cy, r, mouthAngle, mouthWidth){
+  const dx = x-cx, dy = y-cy;
+  if(Math.hypot(dx,dy) > r) return false;
+  let angle = Math.atan2(dy,dx) * 180/Math.PI;
+  if(angle < 0) angle += 360;
+  const mc = ((mouthAngle % 360) + 360) % 360;
+  let diff = Math.abs(angle - mc);
+  if(diff > 180) diff = 360 - diff;
+  return diff > mouthWidth/2;
+}
+
+function drawPart(group, p, margin, fill, cyShift){
+  cyShift = cyShift || 0;
+  if(p.type === "circle"){
+    const r = Math.max(4, p.r - margin);
+    group.appendChild(el("circle", {cx:p.cx, cy:p.cy+cyShift, r, fill}));
+  } else if(p.type === "pacman"){
+    const r = Math.max(4, p.r - margin);
+    group.appendChild(el("path", {d:pacmanPath(p.cx, p.cy+cyShift, r, p.mouthAngle, p.mouthWidth), fill}));
+  } else if(p.type === "roundrect"){
+    const w = Math.max(8, p.w - margin*2), h = Math.max(8, p.h - margin*2);
+    const rx = Math.max(4, Math.min(p.rx - margin*0.5, w/2, h/2));
+    group.appendChild(el("rect", {x:p.cx-w/2, y:p.cy-h/2+cyShift, width:w, height:h, rx, ry:rx, fill}));
+  } else {
+    const rx = Math.max(4, p.rx - margin), ry = Math.max(4, p.ry - margin);
+    const attrs = {cx:p.cx, cy:p.cy+cyShift, rx, ry, fill};
+    if(p.rot) attrs.transform = `rotate(${p.rot} ${p.cx} ${p.cy+cyShift})`;
+    group.appendChild(el("ellipse", attrs));
+  }
+}
+function buildIslandSilhouette(){
+  const base = document.getElementById("islandBase");
+  const grass = document.getElementById("islandGrass");
+  const sandShape = p => p.type === "pacman" ? {...p, type:"circle"} : p;
+  BODY_PARTS.forEach(p => drawPart(base, sandShape(p), 0, "var(--sand-shadow)", 32));
+  BODY_PARTS.forEach(p => drawPart(base, sandShape(p), 0, "var(--sand)", 0));
+  BODY_PARTS.forEach(p => drawPart(grass, p, p.grassMargin, "url(#grassGrad)", 0));
+}
+buildIslandSilhouette();
+
+function inRotatedEllipse(x, y, cx, cy, rx, ry, rotDeg){
+  const rad = -(rotDeg||0) * Math.PI/180;
+  const dx = x-cx, dy = y-cy;
+  const rx2 = dx*Math.cos(rad) - dy*Math.sin(rad);
+  const ry2 = dx*Math.sin(rad) + dy*Math.cos(rad);
+  return (rx2*rx2)/(rx*rx) + (ry2*ry2)/(ry*ry) <= 1;
+}
+function inRoundRect(x, y, cx, cy, w, h, rx){
+  const dx = Math.abs(x-cx), dy = Math.abs(y-cy);
+  if(dx > w/2 || dy > h/2) return false;
+  const rxc = Math.max(0, Math.min(rx, w/2, h/2));
+  if(dx <= w/2-rxc || dy <= h/2-rxc) return true;
+  const cx2 = dx-(w/2-rxc), cy2 = dy-(h/2-rxc);
+  return cx2*cx2 + cy2*cy2 <= rxc*rxc;
+}
+function onLandmass(x, y){
+  for(const p of BODY_PARTS){
+    const sp = p.type === "pacman" ? {...p, type:"circle"} : p;
+    if(sp.type === "circle"){
+      if(Math.hypot(x-sp.cx, y-sp.cy) <= sp.r) return true;
+    } else if(sp.type === "roundrect"){
+      if(inRoundRect(x, y, sp.cx, sp.cy, sp.w, sp.h, sp.rx)) return true;
+    } else {
+      if(inRotatedEllipse(x, y, sp.cx, sp.cy, sp.rx, sp.ry, sp.rot)) return true;
+    }
+  }
+  return false;
+}
+
+/* ============================================================
+   1. FAIRY DEFINITIONS
+   ============================================================ */
+const FAIRY_TYPES = {
+  widecillin: {
+    species:"mammal", name: "わいどん",
+    desc: "はばひろく色々な菌に立ち向かう、たのもしいくま。",
+    body: "#a68868", bodyDark:"#7a6249", belly:"#f0e6d8",
+    ear: "round", tail:"round", snout:true,
+    canFix: ["germs"]
+  },
+  cefditoren: {
+    species:"mammal", name: "じーとん",
+    desc: "のんびりやさんだけど、ばい菌退治はまかせて、というぶた。",
+    body: "#f5b8c4", bodyDark:"#e08fa0", belly:"#fde6ea",
+    ear: "floppy", tail:"curly", pigSnout:true, snoutColor:"#e28a9a",
+    canFix: ["germs"]
+  },
+  tomiron: {
+    species:"mammal", name: "ロンロン",
+    desc: "のんびりマイペースだけど、いざという時はしっかり者のぱんだ。",
+    body: "#f5f5f0", bodyDark:"#2b2b2b", belly:"#ffffff",
+    ear: "round", tail:"round", pandaPatches:true, darkEars:true, darkArms:true,
+    canFix: ["germs"]
+  },
+  clarithromycin: {
+    species:"mammal", name: "くらりす",
+    desc: "すばしっこく動きまわって、しつこい菌もやっつけるりす。",
+    body: "#c97b4a", bodyDark:"#a35c34", belly:"#f5e3cf",
+    ear: "round", tail:"fluffy",
+    canFix: ["germs"]
+  },
+
+  /* ---- happening-specific remedy fairies ----
+     each has canFix: [happeningId] and is the "correct" cure for that
+     one happening type. */
+  sankaMg: {
+    species:"mammal", name: "かまぐー",
+    desc: "かたくなったおなかをやわらかくほぐす、べんぴ解消のスペシャリスト。",
+    body: "#c69569", bodyDark:"#8f6640", belly:"#f3e2c9",
+    ear:"round", tail:"round", snout:true,
+    canFix: ["constipation"]
+  },
+  biofermin: {
+    species:"bee", name: "びおびー",
+    desc: "善玉菌のちからで、おなかの中をととのえる発酵上手。",
+    body: "#ffd23f", bodyDark:"#3a3020", belly:"#fff6df",
+    canFix: ["gutflora"]
+  },
+  carbocisteine: {
+    species:"clipper", name: "かるぼん",
+    desc: "のどにからんだたんを、すっきりさらさらにしてくれる。",
+    body: "#7ec850", bodyDark:"#4c8a2e", belly:"#e9f6d8",
+    canFix: ["phlegm"]
+  },
+  domperidone: {
+    species:"penguin", name: "どんぺん",
+    desc: "止まった胃をぽんとひと押しして、また動かしてくれる。",
+    body: "#3a3f4a", bodyDark:"#24272e", belly:"#ffffff",
+    beak:"#ffcf40", foot:"#f2ac2e",
+    canFix: ["stagnation"]
+  },
+  calonal: {
+    species:"parrot", name: "かろばーど",
+    desc: "火照ったからだをひんやり落ち着かせる、解熱のエキスパート。",
+    body: "#3f7fd1", bodyDark:"#2a5a9e", belly:"#ffd23f",
+    beak:"#3a3a3a", crestColor:"#ffd23f",
+    canFix: ["fever"]
+  },
+
+  /* ---- 記録の種類で増える妖精（デザインは仮。あとで差し替える） ----
+     abx1〜3 ＝「こうせいざいようせい」3種（抗生剤を記録したとき）
+     misc1〜3 ＝ 対応表にない薬を記録したとき
+     どちらも 3種のうち持っていないものがランダムで出る（全部持っていれば完全ランダム）。
+     名前・説明・色・形（species など）を書き換えるだけでデザインを変えられる。 */
+  abx1: {
+    species:"mammal", name: "こうせいざいようせいA",
+    desc: "ばい菌退治をおうえんする、こうせいざいの妖精。",
+    body: "#8fd3c7", bodyDark:"#5fb0a3", belly:"#e4f6f2",
+    ear:"round", tail:"round", snout:true,
+    canFix: ["germs"]
+  },
+  abx2: {
+    species:"mammal", name: "こうせいざいようせいB",
+    desc: "ばい菌退治をおうえんする、こうせいざいの妖精。",
+    body: "#9db8f0", bodyDark:"#6f90d6", belly:"#e6eefc",
+    ear:"floppy", tail:"curly",
+    canFix: ["germs"]
+  },
+  abx3: {
+    species:"mammal", name: "こうせいざいようせいC",
+    desc: "ばい菌退治をおうえんする、こうせいざいの妖精。",
+    body: "#f2c27a", bodyDark:"#d99d45", belly:"#fdf1dc",
+    ear:"round", tail:"fluffy",
+    canFix: ["germs"]
+  },
+  misc1: {
+    species:"mammal", name: "おくすりようせいA",
+    desc: "おくすりをがんばって飲んだ、きみのなかま。",
+    body: "#f4a6c0", bodyDark:"#e07a9f", belly:"#fde8ef",
+    ear:"round", tail:"round", snout:true,
+    canFix: []
+  },
+  misc2: {
+    species:"mammal", name: "おくすりようせいB",
+    desc: "おくすりをがんばって飲んだ、きみのなかま。",
+    body: "#c7e08a", bodyDark:"#9bbd5a", belly:"#f3f9df",
+    ear:"floppy", tail:"fluffy",
+    canFix: []
+  },
+  misc3: {
+    species:"mammal", name: "おくすりようせいC",
+    desc: "おくすりをがんばって飲んだ、きみのなかま。",
+    body: "#d8c1f0", bodyDark:"#b295d6", belly:"#f4ecfc",
+    ear:"round", tail:"curly",
+    canFix: []
+  },
+
+  /* ---- special fairies: can fix ANY happening. Placed on the island
+     from the very start so a happening is never unresolvable, even
+     before the matching remedy fairy exists on the island. ---- */
+  special1: {
+    species:"giraffe", name: "よろずやく妖精・いろは",
+    desc: "どんなハプニングも直せる、島いちばん頼れる万能薬の妖精。",
+    body: "#c9b3ef", bodyDark:"#9c7fce", belly:"#f6effc",
+    spot:"#8a63c4",
+    canFix: "all"
+  },
+};
+
+/* ============================================================
+   1x. 服薬管理アプリとの連携（記録ごほうびガチャ）
+   同一オリジンのlocalStorageを介して、服薬管理アプリ側が積んだ
+   「ガチャ権」「確定入手予約」を読み取り、消化する。
+   ============================================================ */
+/* 「グループ報酬」：確定入手の予約に group:〜 が入っていたら、島で受け取るときに
+   そのグループの3種から1体を決める。持っていない種類があればその中からランダム、
+   3種とも持っていれば3種から完全ランダム。 */
+const GROUP_REWARDS = {
+  "group:antibiotic": ["abx1","abx2","abx3"],   // こうせいざいようせい
+  "group:other":      ["misc1","misc2","misc3"] // 対応表にない薬
+};
+function pickGroupRewardType(token, ownedFairies){
+  const list = GROUP_REWARDS[token];
+  const owned = new Set(ownedFairies.map(f => f.type));
+  const unowned = list.filter(t => !owned.has(t));
+  const pool = unowned.length ? unowned : list;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+/* 対応表の妖精：まだ持っていなければ基本の姿、持っていれば「まだ持っていない色違い」から、
+   全部持っていれば色違い込みの10種から完全ランダムで1体決める。 */
+function pickSpecificLookType(baseType, ownedFairies){
+  const owned = new Set(ownedFairies.map(f => f.type));
+  if(!owned.has(baseType)) return baseType;
+  const looks = [baseType];
+  for(let i=1; i<=NUM_COLOR_VARIANTS; i++) looks.push(`${baseType}_c${i}`);
+  const unowned = looks.filter(t => !owned.has(t));
+  const pool = unowned.length ? unowned : looks;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+const YOUSEI_PERSON = (function(){
+  const n = Number(new URLSearchParams(location.search).get("person"));
+  return (n >= 1 && n <= 5) ? n : 1;
+})();
+const YOUSEI_STORAGE_KEY = "kusuri_yousei_state_v1_person_" + YOUSEI_PERSON;
+
+function loadYouseiSharedState(){
+  const empty = { processedRecordIds:[], pendingDraws:0, pendingGuaranteed:[], ownedSpecialtyTypes:[], fairies:[] };
+  let raw = null;
+  try{ raw = window.localStorage.getItem(YOUSEI_STORAGE_KEY); }catch(e){ return empty; }
+  if(!raw) return empty;
+  try{
+    const p = JSON.parse(raw);
+    return {
+      processedRecordIds: Array.isArray(p.processedRecordIds) ? p.processedRecordIds : [],
+      pendingDraws: 0, // ランダムなガチャ権は廃止（以前の未使用分は破棄）
+      pendingGuaranteed: Array.isArray(p.pendingGuaranteed) ? p.pendingGuaranteed.filter(t => FAIRY_TYPES[t] || GROUP_REWARDS[t]) : [],
+      ownedSpecialtyTypes: Array.isArray(p.ownedSpecialtyTypes) ? p.ownedSpecialtyTypes : [],
+      // 削除済みの妖精タイプが保存データに残っていても落ちないよう読み込み時に除外
+      fairies: Array.isArray(p.fairies) ? p.fairies.filter(f => f && FAIRY_TYPES[f.type]) : []
+    };
+  }catch(e){ return empty; }
+}
+function saveYouseiSharedState(st){
+  try{ window.localStorage.setItem(YOUSEI_STORAGE_KEY, JSON.stringify(st)); }catch(e){}
+}
+
+/* 専門妖精の定位置（見つけやすいよう毎回だいたい同じ場所に出す） */
+const SPECIALTY_START_POS = {
+  sankaMg:       {x:2950, y:3480},
+  biofermin:     {x:2400, y:3200},
+  carbocisteine: {x:2700, y:1780},
+  domperidone:   {x:2950, y:2500},
+  calonal:       {x:2700, y:1000}
+};
+
+/* ---- fixed river layout (locked, not player-editable) ---- */
+const RIVERS = [
+  { points: [[2058,1202],[2122,1212],[2148,1214],[2180,1216],[2220,1218],[2260,1220],[2302,1220],[2344,1218],[2384,1216],[2422,1214],[2460,1212],[2496,1208],[2530,1204],[2566,1204],[2600,1204],[2632,1210],[2660,1220],[2684,1238],[2704,1260],[2718,1288],[2728,1322],[2732,1356],[2734,1394],[2734,1430],[2734,1468],[2732,1504],[2730,1538],[2726,1574],[2724,1612],[2720,1650],[2720,1688],[2718,1728],[2718,1768],[2720,1806],[2720,1844],[2722,1884],[2726,1920],[2730,1958],[2734,1996],[2740,2036],[2744,2074],[2750,2112],[2754,2152],[2758,2192],[2760,2232],[2764,2272],[2766,2312],[2768,2352],[2772,2390],[2776,2426],[2780,2462],[2784,2498],[2786,2534],[2784,2568],[2778,2600],[2764,2628],[2742,2652],[2712,2672],[2680,2688],[2646,2700],[2610,2708],[2574,2712],[2536,2712],[2500,2712],[2466,2714],[2436,2720],[2410,2734],[2390,2754],[2380,2780],[2372,2812],[2370,2848],[2370,2882],[2376,2916],[2386,2948],[2402,2972],[2426,2990],[2456,3000],[2492,3004],[2528,3004],[2564,3000],[2602,2996],[2640,2990],[2678,2986],[2716,2984],[2758,2984],[2798,2982],[2838,2984],[2876,2988],[2908,2996],[2936,3008],[2952,3026],[2962,3050],[2960,3072],[2946,3094],[2924,3112],[2894,3122],[2858,3128],[2820,3130],[2782,3132],[2742,3132],[2704,3132],[2668,3134],[2634,3138],[2602,3146],[2578,3158],[2560,3178],[2550,3202],[2548,3228],[2556,3252],[2572,3270],[2598,3284],[2628,3292],[2664,3296],[2702,3298],[2738,3296],[2774,3294],[2808,3292],[2840,3292],[2870,3298],[2892,3308],[2908,3326],[2914,3348],[2912,3372],[2900,3396],[2880,3418],[2852,3436],[2820,3448],[2782,3456],[2742,3462],[2702,3466],[2660,3468],[2620,3468],[2576,3470],[2534,3468],[2492,3468],[2450,3464],[2410,3460],[2372,3452],[2338,3444],[2306,3430],[2276,3414],[2252,3392],[2230,3366],[2214,3338],[2200,3304],[2192,3270],[2186,3232],[2184,3196],[2182,3160],[2182,3124],[2184,3088],[2190,3052],[2200,3020],[2212,2988],[2232,2962],[2254,2940],[2280,2920],[2310,2906],[2342,2896],[2376,2888],[2412,2884],[2448,2880],[2486,2880],[2524,2878],[2560,2878],[2600,2878],[2638,2878],[2680,2878],[2722,2878],[2768,2878],[2812,2878],[2858,2878],[2904,2878],[2948,2878],[2990,2878],[3030,2880],[3068,2886],[3104,2896],[3136,2910],[3164,2932],[3186,2960],[3202,2990],[3212,3026],[3218,3062],[3220,3098],[3220,3134],[3216,3172],[3212,3208],[3206,3246],[3198,3282],[3188,3318],[3176,3352],[3162,3386],[3144,3416],[3122,3444],[3098,3468],[3070,3488],[3040,3506],[3008,3522],[2974,3534],[2938,3544],[2904,3554],[2868,3562],[2834,3572],[2802,3582],[2770,3594],[2742,3610],[2720,3630],[2702,3656],[2690,3686],[2682,3718],[2678,3754],[2676,3790],[2674,3820],[2672,3848],[2672,3910]] }
+];
+
+/* ---- starting flower layout (editable baseline, can still be adjusted/re-exported) ----
+   the first entry (sx/sy 6.40) is by far the largest, so it's the one
+   mainFlowerObj picks out automatically as the gutflora happening's
+   actual glowing/tappable target — see the comment where it's set.
+   "color" is optional (any hex string) — a curated flower with one set
+   keeps that exact colour forever instead of picking a new random one on
+   every reload, per request. Leave it off to keep the old random
+   behaviour (e.g. for flowers a person places later through the editor,
+   which never pass through this array at all). */
+const START_FLOWERS = [
+  { x: 2697, y: 3184, sx: 6.40, sy: 6.40, color:"#ff6b6b" },
+  { x: 3064, y: 3036, sx: 2.00, sy: 2.00, color:"#ffd166" },
+  { x: 3053, y: 3188, sx: 2.00, sy: 2.00, color:"#c9b3ef" },
+  { x: 2979, y: 3278, sx: 2.00, sy: 2.00, color:"#ffa94d" },
+  { x: 3082, y: 3381, sx: 2.00, sy: 2.00, color:"#f783ac" },
+  { x: 2621, y: 3375, sx: 2.00, sy: 2.00, color:"#eebefa" },
+  { x: 2861, y: 3056, sx: 2.00, sy: 2.00, color:"#ff9ecf" },
+  { x: 2327, y: 2977, sx: 2.00, sy: 2.00, color:"#ffe066" },
+  { x: 2271, y: 3083, sx: 2.00, sy: 2.00, color:"#ff8fa3" },
+  { x: 2468, y: 3129, sx: 2.00, sy: 2.00, color:"#ffd166" },
+  { x: 2319, y: 3356, sx: 2.00, sy: 2.00, color:"#c9b3ef" },
+  { x: 2380, y: 3184, sx: 2.00, sy: 2.00, color:"#ffa94d" }
+];
+
+/* ---- starting happening-marker layout (editable baseline, positions decided in-editor) ---- */
+const START_HAPPENINGS = [
+  { type: "hotspring", x: 2707, y: 744, sx: 6.01, sy: 7.23 },
+  { type: "whirlpool", x: 2854, y: 2595, sx: 3.20, sy: 3.20 },
+  { type: "whirlpool", x: 2988, y: 2618, sx: 2.70, sy: 2.33 },
+  { type: "whirlpool", x: 3041, y: 2557, sx: 3.20, sy: 3.20 },
+  { type: "spiderweb", x: 2696, y: 1936, sx: 3.20, sy: 3.20 },
+  { type: "rock", x: 2827, y: 3569, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 2860, y: 3596, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 2906, y: 3553, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 2966, y: 3556, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 2989, y: 3523, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 2807, y: 3586, sx: 1.00, sy: 1.00 },
+  { type: "rock", x: 3052, y: 3514, sx: 1.00, sy: 1.00 },
+  { type: "spiderweb", x: 2687, y: 1568, sx: 2.38, sy: 2.47 },
+  { type: "spiderweb", x: 2748, y: 1740, sx: 3.20, sy: 3.20 }
+];
+
+const START_FAIRIES = [
+  // remedy fairies — each is the specific cure for one happening type.
+  // (usagi/kuma/neko/risu/tori/uma/kirin and their colour variants remain
+  // gacha-only — that's a separate system tied to real app usage. If a
+  // browser/test session already has some sitting in localStorage from
+  // earlier testing, under YOUSEI_STORAGE_KEY, those will still show up
+  // too, independent of this list — see loadYouseiSharedState.)
+  {id:"f22", type:"sankaMg",       x:2950, y:3480},
+  {id:"f23", type:"biofermin",     x:2400, y:3200},
+  {id:"f24", type:"carbocisteine", x:2700, y:1780},
+  {id:"f25", type:"domperidone",   x:2950, y:2500},
+  {id:"f26", type:"widecillin",    x:2400, y:2600}, // germs/virus — kouseizai (the old germs specialist) was removed, so one of the 4 new germs fairies keeps this slot so there's still a non-giraffe answer for it from the very start
+  {id:"f27", type:"calonal",       x:2700, y:1000},
+  // special fairy — can fix ANY happening. Just one to start (used to be
+  // 3); more can still be won normally through the usual reward flow.
+  {id:"f28", type:"special1", x:1950, y:2100}
+];
+
+/* ============================================================
+   2. SHARED BODY-PART HELPERS
+   (all parts are rigid shapes on anchored groups; animation only
+    ever translates/rotates/scales groups as a whole, so nothing
+    stretches or falls apart)
+   ============================================================ */
+function makeLeg(side, opt, t){
+  const sign = side === "L" ? -1 : 1;
+  const g = el("g", {class:"leg"+side, transform:`translate(${sign*opt.spacing},${opt.anchorY})`});
+  if(opt.thin){
+    g.appendChild(el("rect", {x:-2, y:0, width:4, height:opt.length, rx:2, fill:t.bodyDark}));
+    g.appendChild(el("path", {d:`M-5,${opt.length} q5,6 5,0 q0,6 5,0`, fill:"none", stroke:t.bodyDark, "stroke-width":2.5, "stroke-linecap":"round"}));
+  } else {
+    g.appendChild(el("ellipse", {cx:0, cy:opt.length/2, rx:opt.width, ry:opt.length/2, fill:t.bodyDark}));
+    if(opt.hoof) g.appendChild(el("ellipse", {cx:0, cy:opt.length, rx:opt.width*0.85, ry:3, fill:"#5a4632"}));
+  }
+  return g;
+}
+function makeEar(side, type, t){
+  const sign = side === "L" ? -1 : 1;
+  if(type === "ossicone"){
+    const eg = el("g", {transform:`translate(${sign*6},-16)`});
+    eg.appendChild(el("rect", {x:-2, y:-14, width:4, height:14, fill:t.bodyDark}));
+    eg.appendChild(el("circle", {cx:0, cy:-16, r:4, fill:t.bodyDark}));
+    return eg;
+  }
+  if(type === "tiny"){
+    const eg = el("g", {transform:`translate(${sign*9},-15)`});
+    eg.appendChild(el("polygon", {points:`0,0 ${sign*6},-12 ${sign*-2},-2`, fill:t.body}));
+    return eg;
+  }
+  const eg = el("g", {transform:`translate(${sign*13},-8)`});
+  if(type === "long"){
+    eg.appendChild(el("path", {d:`M0,0 Q${sign*10},-30 ${sign*2},-46 Q${sign*-6},-32 0,0`, fill:t.body}));
+    eg.appendChild(el("path", {d:`M${sign*1},-6 Q${sign*6},-26 ${sign*1},-38`, stroke:t.belly, "stroke-width":4, fill:"none", "stroke-linecap":"round"}));
+  } else if(type === "cat"){
+    eg.appendChild(el("path", {d:`M${sign*-8},4 L${sign*10},-18 L${sign*2},6 Z`, fill:t.body}));
+  } else if(type === "floppy"){
+    // hangs down from the head instead of standing up — pig-style
+    eg.appendChild(el("path", {d:`M0,-4 Q${sign*14},2 ${sign*10},20 Q${sign*2},18 0,-4 Z`, fill:t.body}));
+    eg.appendChild(el("path", {d:`M${sign*2},0 Q${sign*10},4 ${sign*8},16`, stroke:t.belly, "stroke-width":3, fill:"none", "stroke-linecap":"round"}));
+  } else {
+    // darkEars: ears take the dark accent colour instead of the body colour
+    // (panda-style) — inner ear too, so they read as solid black rather
+    // than black-with-a-white-centre
+    eg.appendChild(el("circle", {cx:0, cy:-10, r:11, fill:t.darkEars ? t.bodyDark : t.body}));
+    eg.appendChild(el("circle", {cx:0, cy:-9, r:6, fill:t.darkEars ? t.bodyDark : t.belly}));
+  }
+  return eg;
+}
+function makeTail(type, t, anchor){
+  const tg = el("g", {class:"tail", transform:`translate(${anchor.x},${anchor.y})`});
+  if(type === "round"){
+    tg.appendChild(el("ellipse", {cx:0, cy:0, rx:11, ry:9, fill:t.bodyDark}));
+  } else if(type === "long"){
+    tg.appendChild(el("path", {d:"M0,4 Q22,-2 20,-22", stroke:t.bodyDark, "stroke-width":9, fill:"none", "stroke-linecap":"round"}));
+  } else if(type === "fluffy"){
+    tg.appendChild(el("circle", {cx:2, cy:2, r:12, fill:t.bodyDark}));
+    tg.appendChild(el("circle", {cx:-4, cy:-8, r:8, fill:t.bodyDark}));
+  } else if(type === "feather"){
+    [-12,0,12].forEach((a,i)=>{
+      tg.appendChild(el("path", {d:`M0,0 L${a},${-18-Math.abs(a)*0.3} L${a*0.4},2 Z`, fill: i===1?t.bodyDark:t.body}));
+    });
+  } else if(type === "flow"){
+    tg.appendChild(el("path", {d:"M0,0 Q10,20 2,42 Q-6,26 0,0", fill:t.bodyDark}));
+  } else if(type === "tuft"){
+    tg.appendChild(el("path", {d:"M0,0 Q4,16 2,30", stroke:t.bodyDark, "stroke-width":3.5, fill:"none", "stroke-linecap":"round"}));
+    tg.appendChild(el("circle", {cx:2, cy:31, r:4, fill:t.bodyDark}));
+  } else if(type === "curly"){
+    // a little spiral — pig-style
+    tg.appendChild(el("path", {d:"M0,0 Q10,-2 8,-10 Q6,-16 -1,-14 Q-6,-13 -4,-8", stroke:t.bodyDark, "stroke-width":4, fill:"none", "stroke-linecap":"round"}));
+  }
+  return tg;
+}
+function makeEyesAndFace(head, t){
+  const eyeL = el("ellipse", {class:"eyeL", cx:-7, cy:-2, rx:2.6, ry:3.4, fill:"#3a2c1f"});
+  const eyeR = el("ellipse", {class:"eyeR", cx:7, cy:-2, rx:2.6, ry:3.4, fill:"#3a2c1f"});
+  head.appendChild(eyeL); head.appendChild(eyeR);
+  head.appendChild(el("circle", {cx:-12, cy:5, r:3, fill:"#ff9fae", opacity:0.6}));
+  head.appendChild(el("circle", {cx:12, cy:5, r:3, fill:"#ff9fae", opacity:0.6}));
+  return {eyeL, eyeR};
+}
+// all n spots as ONE path (n subpaths, each two arcs = a circle) instead
+// of n separate <ellipse> elements — same "merge into one path" trick as
+// the flower petals, since a giraffe's 12 spots (7 body + 5 neck) were
+// the single biggest contributor to it being the heaviest fairy to draw.
+function scatterSpots(container, color, n, rx, ry, cx, cy){
+  cx = cx||0; cy = cy||0;
+  let d = "";
+  for(let i=0;i<n;i++){
+    const x = cx + (Math.random()*2-1)*rx*0.8;
+    const y = cy + (Math.random()*2-1)*ry*0.8;
+    const r = 2.75 + Math.random()*2.25; // was two separate rx/ry rolls — a circle reads the same at this size
+    d += `M${(x-r).toFixed(1)},${y.toFixed(1)} A${r},${r} 0 1,1 ${(x+r).toFixed(1)},${y.toFixed(1)} A${r},${r} 0 1,1 ${(x-r).toFixed(1)},${y.toFixed(1)} Z `;
+  }
+  container.appendChild(el("path", {d:d.trim(), fill:color, opacity:0.55}));
+}
+
+/* ============================================================
+   3. SPECIES BUILDERS  (each returns {g, refs})
+   ============================================================ */
+function buildSmallMammal(fairy, t){
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  bodyWrap.appendChild(makeTail(t.tail, t, {x:-20, y:8}));
+
+  const legL = el("g"); legL.appendChild(makeLeg("L", {spacing:11, anchorY:20, length:12, width:7}, t));
+  const legR = el("g"); legR.appendChild(makeLeg("R", {spacing:11, anchorY:20, length:12, width:7}, t));
+  legL.setAttribute("transform","translate(-11,20)");
+  legR.setAttribute("transform","translate(11,20)");
+  // re-anchor inner leg at 0,0 since outer g already carries anchor translate
+  legL.firstChild.setAttribute("transform","translate(0,0)");
+  legR.firstChild.setAttribute("transform","translate(0,0)");
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  const body = el("g", {class:"body"});
+  body.appendChild(el("ellipse", {cx:0, cy:0, rx:24, ry:22, fill:t.body}));
+  body.appendChild(el("ellipse", {cx:0, cy:6, rx:14, ry:12, fill:t.belly}));
+  bodyWrap.appendChild(body);
+  if(t.darkArms){
+    // static decorative arms hanging at the sides, tilted slightly outward —
+    // the mammal rig only animates legs, so these don't move (panda: black arms)
+    [-1,1].forEach(s=>{
+      bodyWrap.appendChild(el("ellipse", {cx:s*21, cy:6, rx:7, ry:14, fill:t.bodyDark, transform:`rotate(${-s*12} ${s*21} 6)`}));
+    });
+  }
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(0,-24)", "data-bx":"0", "data-by":"-24"});
+  headWrap.appendChild(makeEar("L", t.ear, t));
+  headWrap.appendChild(makeEar("R", t.ear, t));
+  const head = el("g", {class:"head"});
+  head.appendChild(el("circle", {cx:0, cy:0, r:20, fill:t.body}));
+  head.appendChild(el("ellipse", {cx:0, cy:7, rx:11, ry:8, fill:t.belly}));
+  if(t.pandaPatches){
+    // drawn BEFORE the eyes, so the eyes sit on top of (not under) the patches
+    head.appendChild(el("ellipse", {cx:-7, cy:-3, rx:5, ry:6.5, fill:t.bodyDark}));
+    head.appendChild(el("ellipse", {cx:7, cy:-3, rx:5, ry:6.5, fill:t.bodyDark}));
+  }
+  const eyes = makeEyesAndFace(head, t);
+  if(t.pigSnout){
+    // a flat, round disc with two nostril dots — distinct from the bear's
+    // more forward-projecting muzzle below
+    head.appendChild(el("ellipse", {cx:0, cy:9, rx:7, ry:5.5, fill:t.snoutColor || "#e8a0a8"}));
+    head.appendChild(el("ellipse", {cx:-2.2, cy:9, rx:1.3, ry:1.8, fill:"#8a5560"}));
+    head.appendChild(el("ellipse", {cx:2.2, cy:9, rx:1.3, ry:1.8, fill:"#8a5560"}));
+  } else if(t.snout){
+    // a rounder, more forward-projecting muzzle for a bear-like face,
+    // instead of the plain flat-faced default
+    head.appendChild(el("ellipse", {cx:0, cy:10, rx:9, ry:7, fill:t.belly}));
+    head.appendChild(el("ellipse", {cx:0, cy:8, rx:2.4, ry:1.9, fill:"#3a2c1f"}));
+  } else {
+    head.appendChild(el("ellipse", {cx:0, cy:6, rx:2, ry:1.6, fill:"#3a2c1f"}));
+  }
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:0, cy:6, rx:36, ry:14}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR}};
+}
+
+function buildGiraffe(fairy, t){
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  bodyWrap.appendChild(makeTail("tuft", t, {x:-20, y:2}));
+
+  const legL = el("g", {transform:"translate(-11,14)"});
+  legL.appendChild(makeLeg("L", {spacing:0, anchorY:0, length:30, width:5, hoof:true}, t));
+  const legR = el("g", {transform:"translate(11,14)"});
+  legR.appendChild(makeLeg("R", {spacing:0, anchorY:0, length:30, width:5, hoof:true}, t));
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  const body = el("g", {class:"body"});
+  body.appendChild(el("ellipse", {cx:0, cy:0, rx:22, ry:16, fill:t.body}));
+  body.appendChild(el("ellipse", {cx:0, cy:5, rx:12, ry:9, fill:t.belly}));
+  scatterSpots(body, t.spot || t.bodyDark, 7, 20, 14);
+  bodyWrap.appendChild(body);
+
+  // long neck (fixed)
+  const neck = el("path", {d:"M-6,-10 Q-2,-40 2,-66 L16,-64 Q12,-36 8,-6 Z", fill:t.body});
+  bodyWrap.appendChild(neck);
+  // was scattering these around (0,0) — nowhere near the neck itself,
+  // which runs from about y:-66 to y:-6 — so the pattern ended up
+  // floating over the body instead of on the neck. Centered on the
+  // neck's own midpoint now.
+  scatterSpots(neck, t.spot || t.bodyDark, 5, 8, 30, 5, -36);
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(9,-72)", "data-bx":"9", "data-by":"-72"});
+  headWrap.appendChild(makeEar("L", "ossicone", t));
+  headWrap.appendChild(makeEar("R", "ossicone", t));
+  const head = el("g", {class:"head"});
+  head.appendChild(el("ellipse", {cx:0, cy:0, rx:9, ry:8, fill:t.body}));
+  head.appendChild(el("ellipse", {cx:8, cy:2, rx:7, ry:5, fill:t.body}));
+  head.appendChild(el("ellipse", {cx:10, cy:3, rx:3, ry:2.2, fill:t.belly}));
+  const eyes = makeEyesAndFace(head, t);
+  eyes.eyeL.setAttribute("cx","-3"); eyes.eyeL.setAttribute("cy","-2");
+  eyes.eyeR.setAttribute("cx","4"); eyes.eyeR.setAttribute("cy","-3");
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:2, cy:6, rx:30, ry:14}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR}};
+}
+
+function buildBee(fairy, t){
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  // stinger now points down from the bottom of the (now vertical) body,
+  // instead of sticking out sideways from what used to be a horizontal one
+  bodyWrap.appendChild(el("path", {d:"M-3,12 L0,19 L3,12 Z", fill:t.bodyDark}));
+
+  const legL = el("g", {transform:"translate(-6,15)"});
+  legL.appendChild(makeLeg("L", {spacing:0, anchorY:0, length:6, thin:true}, t));
+  const legR = el("g", {transform:"translate(6,15)"});
+  legR.appendChild(makeLeg("R", {spacing:0, anchorY:0, length:6, thin:true}, t));
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  // upright, vertical body (tall oval, not wide) so it stands in line with
+  // the head-on-top/legs-at-bottom pose every other fairy uses — it used
+  // to be wider than it was tall, which read as lying on its side. Ring
+  // stripes are horizontal bands now too, to match a body that's vertical.
+  const clipId = `beeClip-${fairy.id}`;
+  const body = el("g", {class:"body"});
+  const clipDefs = el("clipPath", {id:clipId});
+  clipDefs.appendChild(el("ellipse", {cx:0, cy:-2, rx:13, ry:17}));
+  body.appendChild(clipDefs);
+  const striped = el("g", {"clip-path":`url(#${clipId})`});
+  striped.appendChild(el("ellipse", {cx:0, cy:-2, rx:13, ry:17, fill:t.body}));
+  [-11,-1,9].forEach(by=>{
+    striped.appendChild(el("rect", {x:-15, y:by, width:30, height:6, fill:t.bodyDark}));
+  });
+  body.appendChild(striped);
+  body.appendChild(el("ellipse", {cx:0, cy:4, rx:7, ry:9, fill:t.belly, opacity:"0.85"})); // soft fuzzy belly highlight
+  bodyWrap.appendChild(body);
+
+  // wings pivot at the same fixed shoulder point animateFairyLimbs always
+  // resets them to (±15,-2) — see its own comment — so the wing artwork
+  // itself is drawn relative to that point rather than wherever might
+  // look nicest in isolation
+  const wingL = el("g", {class:"wingL", transform:"translate(-15,-2)"});
+  wingL.appendChild(el("ellipse", {cx:-6, cy:-8, rx:11, ry:7, fill:"#eaf6ff", opacity:"0.8", stroke:"#bfe0f2", "stroke-width":1}));
+  const wingR = el("g", {class:"wingR", transform:"translate(15,-2)"});
+  wingR.appendChild(el("ellipse", {cx:6, cy:-8, rx:11, ry:7, fill:"#eaf6ff", opacity:"0.8", stroke:"#bfe0f2", "stroke-width":1}));
+  bodyWrap.appendChild(wingL);
+  bodyWrap.appendChild(wingR);
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(0,-18)", "data-bx":"0", "data-by":"-18"});
+  // antennae instead of ears
+  headWrap.appendChild(el("path", {d:"M-5,-10 Q-9,-20 -6,-24", stroke:t.bodyDark, "stroke-width":2, fill:"none", "stroke-linecap":"round"}));
+  headWrap.appendChild(el("circle", {cx:-6, cy:-24, r:2, fill:t.bodyDark}));
+  headWrap.appendChild(el("path", {d:"M5,-10 Q9,-20 6,-24", stroke:t.bodyDark, "stroke-width":2, fill:"none", "stroke-linecap":"round"}));
+  headWrap.appendChild(el("circle", {cx:6, cy:-24, r:2, fill:t.bodyDark}));
+  const head = el("g", {class:"head"});
+  head.appendChild(el("circle", {cx:0, cy:0, r:13, fill:t.body}));
+  const eyes = makeEyesAndFace(head, t);
+  head.querySelectorAll('circle[opacity="0.6"]').forEach(c=>c.remove()); // no blush cheeks — reads odd on a bee
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:0, cy:6, rx:30, ry:13}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR, wingL, wingR}};
+}
+
+function buildPenguin(fairy, t){
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  // flat webbed feet, drawn directly rather than via makeLeg — a penguin
+  // stands more upright on flat feet than the generic leg shapes allow for
+  const footColor = t.foot || "#f2ac2e";
+  const legL = el("g", {transform:"translate(-9,20)"});
+  legL.appendChild(el("path", {d:"M-7,0 Q0,-4 7,0 Q4,6 0,6 Q-4,6 -7,0 Z", fill:footColor}));
+  const legR = el("g", {transform:"translate(9,20)"});
+  legR.appendChild(el("path", {d:"M-7,0 Q0,-4 7,0 Q4,6 0,6 Q-4,6 -7,0 Z", fill:footColor}));
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  const body = el("g", {class:"body"});
+  body.appendChild(el("ellipse", {cx:0, cy:2, rx:20, ry:22, fill:t.body}));
+  body.appendChild(el("ellipse", {cx:0, cy:7, rx:13, ry:16, fill:t.belly}));
+  bodyWrap.appendChild(body);
+
+  // small flipper "wings" hanging at the sides, same fixed shoulder pivot
+  // as every other winged species (see buildBee's comment on this)
+  const wingL = el("g", {class:"wingL", transform:"translate(-15,-2)"});
+  wingL.appendChild(el("ellipse", {cx:-3, cy:10, rx:6, ry:14, fill:t.body}));
+  const wingR = el("g", {class:"wingR", transform:"translate(15,-2)"});
+  wingR.appendChild(el("ellipse", {cx:3, cy:10, rx:6, ry:14, fill:t.body}));
+  bodyWrap.appendChild(wingL);
+  bodyWrap.appendChild(wingR);
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(0,-22)", "data-bx":"0", "data-by":"-22"});
+  const head = el("g", {class:"head"});
+  head.appendChild(el("circle", {cx:0, cy:0, r:16, fill:t.body}));
+  // smaller white face patch than before, and pulled down a bit — leaves
+  // more of the head as its natural black "cap" up top, closer to a real
+  // penguin's face markings, per request to give the black more room
+  head.appendChild(el("ellipse", {cx:0, cy:1, rx:9, ry:9, fill:t.belly}));
+  // white "sclera" behind each pupil for extra pop/cuteness, then bigger
+  // pupils on top — eyes were hard to see before, so both size and
+  // contrast are increased here
+  head.appendChild(el("circle", {cx:-6, cy:-2, r:5, fill:"#ffffff"}));
+  head.appendChild(el("circle", {cx:6, cy:-2, r:5, fill:"#ffffff"}));
+  const eyes = makeEyesAndFace(head, t);
+  head.querySelectorAll('circle[opacity="0.6"]').forEach(c=>c.remove()); // no blush cheeks on the black-feathered part
+  eyes.eyeL.setAttribute("cx","-6"); eyes.eyeL.setAttribute("cy","-2");
+  eyes.eyeL.setAttribute("rx","3.6"); eyes.eyeL.setAttribute("ry","4.6");
+  eyes.eyeR.setAttribute("cx","6"); eyes.eyeR.setAttribute("cy","-2");
+  eyes.eyeR.setAttribute("rx","3.6"); eyes.eyeR.setAttribute("ry","4.6");
+  // small white eye-shine dots for a cuter, more animated-character look
+  head.appendChild(el("circle", {cx:-4.5, cy:-2.8, r:1.1, fill:"#ffffff"}));
+  head.appendChild(el("circle", {cx:7.5, cy:-2.8, r:1.1, fill:"#ffffff"}));
+  // beak, sitting below the eyes and added AFTER the head circle (and
+  // bigger than before) — it used to be added first and the head circle
+  // painted right over most of it, which was the actual reason it was
+  // hard to see
+  head.appendChild(el("path", {d:"M-5,6 Q0,15 5,6 Q3,2 0,2 Q-3,2 -5,6 Z", fill:t.beak || "#ffcf40", stroke:"#00000025", "stroke-width":0.6}));
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:0, cy:10, rx:32, ry:14}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR, wingL, wingR, eyeOpenRy:4.6}};
+}
+
+function buildParrot(fairy, t){
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  // long feather tail — a much more distinctly "bird" silhouette than the
+  // round general-purpose bird species, which was the actual complaint
+  bodyWrap.appendChild(makeTail("feather", t, {x:-4, y:16}));
+
+  const legL = el("g", {transform:"translate(-6,16)"});
+  legL.appendChild(makeLeg("L", {spacing:0, anchorY:0, length:9, thin:true}, t));
+  const legR = el("g", {transform:"translate(6,16)"});
+  legR.appendChild(makeLeg("R", {spacing:0, anchorY:0, length:9, thin:true}, t));
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  // slimmer, more egg-shaped body than the round general bird
+  const body = el("g", {class:"body"});
+  body.appendChild(el("ellipse", {cx:0, cy:2, rx:15, ry:19, fill:t.body}));
+  body.appendChild(el("ellipse", {cx:1, cy:8, rx:9, ry:11, fill:t.belly}));
+  bodyWrap.appendChild(body);
+
+  const wingL = el("g", {class:"wingL", transform:"translate(-15,-2)"});
+  wingL.appendChild(el("path", {d:"M0,0 Q-15,4 -16,22 Q-6,15 0,4 Z", fill:t.bodyDark}));
+  const wingR = el("g", {class:"wingR", transform:"translate(15,-2)"});
+  wingR.appendChild(el("path", {d:"M0,0 Q15,4 16,22 Q6,15 0,4 Z", fill:t.bodyDark}));
+  bodyWrap.appendChild(wingL);
+  bodyWrap.appendChild(wingR);
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(0,-24)", "data-bx":"0", "data-by":"-24"});
+  const head = el("g", {class:"head"});
+  head.appendChild(el("circle", {cx:0, cy:0, r:13, fill:t.body}));
+  // curved, hooked beak — added AFTER the head circle (previously it was
+  // added first and the head circle painted right over most of it, which
+  // was the actual reason it was hard to see) and enlarged so it clearly
+  // pokes out past the head's own outline
+  head.appendChild(el("path", {d:"M-2,-3 Q12,-2 15,5 Q11,11 3,8 Q7,3 -2,2 Z", fill:t.beak || "#f2ac2e", stroke:"#00000030", "stroke-width":0.8}));
+  const crestColor = t.crestColor || t.bodyDark;
+  head.appendChild(el("path", {d:"M-4,-12 Q-10,-22 -5,-28", stroke:crestColor, "stroke-width":3, fill:"none", "stroke-linecap":"round"}));
+  head.appendChild(el("path", {d:"M0,-13 Q0,-25 1,-31", stroke:crestColor, "stroke-width":3, fill:"none", "stroke-linecap":"round"}));
+  head.appendChild(el("path", {d:"M4,-12 Q10,-23 6,-29", stroke:crestColor, "stroke-width":3, fill:"none", "stroke-linecap":"round"}));
+  const eyes = makeEyesAndFace(head, t);
+  head.querySelectorAll('circle[opacity="0.6"]').forEach(c=>c.remove());
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:0, cy:10, rx:28, ry:16}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR, wingL, wingR}};
+}
+
+function buildClipper(fairy, t){
+  // a cute round forest-sprite that carries two sickle/scissor blades out
+  // to the sides — keeps the "cuts through phlegm/cobwebs" visual idea
+  // without an insect body, for anyone who isn't a fan of bugs
+  const g = el("g", {class:"fairy-group", "data-id":fairy.id}); // filter:url(#tinyShadow) temporarily removed to test how much visual difference the per-fairy drop shadow actually makes
+  // generous invisible tap target — fairies used to rely on their actual
+  // visible silhouette for hit-testing, which is thin/gappy in places
+  // (between legs, around wings), so taps that looked "on" the fairy
+  // sometimes missed. A plain circle costs nothing extra to render.
+  g.appendChild(el("circle", {cx:0, cy:0, r:48, fill:"transparent", class:"happening-hit-area"}));
+  const bodyWrap = el("g", {class:"bodyWrap"});
+
+  const legL = el("g", {transform:"translate(-11,20)"});
+  legL.appendChild(makeLeg("L", {spacing:0, anchorY:0, length:12, width:7}, t));
+  const legR = el("g", {transform:"translate(11,20)"});
+  legR.appendChild(makeLeg("R", {spacing:0, anchorY:0, length:12, width:7}, t));
+  bodyWrap.appendChild(legL);
+  bodyWrap.appendChild(legR);
+
+  const body = el("g", {class:"body"});
+  body.appendChild(el("ellipse", {cx:0, cy:4, rx:14, ry:15, fill:t.body})); // slimmed down (was rx:17)
+  body.appendChild(el("ellipse", {cx:0, cy:9, rx:8, ry:8, fill:t.belly}));
+  bodyWrap.appendChild(body);
+
+  // proper kama (sickle) blades: a bent "く"-shaped outer edge (like a
+  // mantis's raptorial forearm — a clear shoulder→elbow→tip bend, not
+  // just a gentle curve) with a jagged, toothed inner edge. Sized up
+  // (~1.3x) to stand out more, and green instead of metallic grey — reads
+  // more like part of a garden tool/leaf-blade than a weapon.
+  const kamaR = "M2.6,-2.6 L19.5,-18.2 L36.4,-10.4 L31.2,-3.9 L27.3,-9.1 L24.7,-3.9 L20.8,-7.8 L15.6,-13 L6.5,1.3 Z";
+  const kamaL = "M-2.6,-2.6 L-19.5,-18.2 L-36.4,-10.4 L-31.2,-3.9 L-27.3,-9.1 L-24.7,-3.9 L-20.8,-7.8 L-15.6,-13 L-6.5,1.3 Z";
+  const bladeL = el("g", {transform:"translate(-13,3)"});
+  bladeL.appendChild(el("path", {d:kamaL, fill:"#4f9a3d", stroke:"#356b28", "stroke-width":1.3, "stroke-linejoin":"round"}));
+  const bladeR = el("g", {transform:"translate(13,3)"});
+  bladeR.appendChild(el("path", {d:kamaR, fill:"#4f9a3d", stroke:"#356b28", "stroke-width":1.3, "stroke-linejoin":"round"}));
+  bodyWrap.appendChild(bladeL);
+  bodyWrap.appendChild(bladeR);
+
+  const headWrap = el("g", {class:"headWrap", transform:"translate(0,-18)", "data-bx":"0", "data-by":"-18"});
+  const head = el("g", {class:"head"});
+  head.appendChild(el("circle", {cx:0, cy:0, r:16, fill:t.body}));
+  head.appendChild(el("ellipse", {cx:0, cy:6, rx:9, ry:6, fill:t.belly}));
+  head.appendChild(el("path", {d:"M0,-16 Q-6,-25 0,-29 Q6,-25 0,-16 Z", fill:t.bodyDark})); // little leaf tuft instead of ears/antennae
+  const eyes = makeEyesAndFace(head, t);
+  headWrap.appendChild(head);
+  bodyWrap.appendChild(headWrap);
+
+  g.appendChild(bodyWrap);
+  g.appendChild(el("ellipse", {class:"fairy-ring", cx:0, cy:8, rx:36, ry:15}));
+  return {g, refs:{bodyWrap, legL, legR, headWrap, eyeL:eyes.eyeL, eyeR:eyes.eyeR}};
+}
+
+const SPECIES_BUILDERS = {
+  mammal: buildSmallMammal,
+  giraffe: buildGiraffe,
+  bee: buildBee,
+  penguin: buildPenguin,
+  parrot: buildParrot,
+  clipper: buildClipper
+};
+function buildFairy(fairy){
+  const t = FAIRY_TYPES[fairy.type];
+  return SPECIES_BUILDERS[t.species](fairy, t);
+}
+
+/* ============================================================
+   3b. AUTO-GENERATED COLOR VARIANTS
+   Same shape, different palette — colors are hue-rotated
+   automatically instead of hand-picked, so adding many
+   variants per species costs almost nothing.
+   ============================================================ */
+function hexToHsl(hex){
+  const r = parseInt(hex.slice(1,3),16)/255;
+  const g = parseInt(hex.slice(3,5),16)/255;
+  const b = parseInt(hex.slice(5,7),16)/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if(max === min){ h = s = 0; }
+  else{
+    const d = max-min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max){
+      case r: h = (g-b)/d + (g<b?6:0); break;
+      case g: h = (b-r)/d + 2; break;
+      default: h = (r-g)/d + 4;
+    }
+    h *= 60;
+  }
+  return [h,s,l];
+}
+function hslToHex(h,s,l){
+  h = ((h%360)+360)%360;
+  const f = n=>{
+    const k = (n + h/30) % 12;
+    const a = s * Math.min(l, 1-l);
+    const c = l - a * Math.max(-1, Math.min(k-3, Math.min(9-k, 1)));
+    return Math.round(255*c).toString(16).padStart(2,"0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+function hueRotate(hex, deg){
+  const [h,s,l] = hexToHsl(hex);
+  return hslToHex(h+deg, s, l);
+}
+const HUE_NAMES = [
+  [0,"あか"], [20,"だいだい"], [45,"こがね"], [60,"きいろ"], [90,"きみどり"],
+  [120,"みどり"], [160,"エメラルド"], [180,"みずいろ"], [210,"そら"],
+  [240,"あい"], [270,"むらさき"], [300,"ふじ"], [330,"もも"]
+];
+function nearestHueName(deg){
+  deg = ((deg%360)+360)%360;
+  let best = HUE_NAMES[0][1], bestDist = 999;
+  HUE_NAMES.forEach(([h,name])=>{
+    const d = Math.min(Math.abs(h-deg), 360-Math.abs(h-deg));
+    if(d < bestDist){ bestDist = d; best = name; }
+  });
+  return best;
+}
+
+const NUM_COLOR_VARIANTS = 9; // + the original shape/color = 10 look-alikes per species
+const PRIMARY_FIELDS = ["body","bodyDark","mane","spot","beak","foot"]; // main palette
+const ACCENT_FIELDS  = ["belly"]; // torso/belly patch — can go analogous OR bold
+(function generateFairyColorVariants(){
+  Object.keys(FAIRY_TYPES).forEach(key=>{
+    const base = FAIRY_TYPES[key];
+    for(let i=1; i<=NUM_COLOR_VARIANTS; i++){
+      const bodyHue = Math.round(360/(NUM_COLOR_VARIANTS+1) * i);
+      // alternate style: odd = soft/analogous belly, even = bold/contrasting belly
+      const isBold = (i % 2 === 0);
+      const accentOffset = isBold ? (150 + (i*7)%40) : (18 + (i*5)%20);
+      const accentHue = bodyHue + accentOffset;
+
+      const variant = {...base};
+      PRIMARY_FIELDS.forEach(f=>{ if(base[f]) variant[f] = hueRotate(base[f], bodyHue); });
+      ACCENT_FIELDS.forEach(f=>{ if(base[f]) variant[f] = hueRotate(base[f], accentHue); });
+      variant.name = `${base.name}（${nearestHueName(bodyHue)}×${nearestHueName(accentHue)}）`;
+      FAIRY_TYPES[`${key}_c${i}`] = variant;
+    }
+  });
+})();
+
+/* ============================================================
+   4. GAME STATE
+   ============================================================ */
+const state = {
+  fairies: [],
+  objects: [],
+  viruses: [],
+  activeHappenings: [], // set up here (not later) since virus spawning needs it right away
+  night: false, // true while the "everything's fixed, go to sleep" overlay is up — see enterNightMode()
+  rivers: RIVERS.map(r => ({id: 0, points: r.points})), // rivers[i].id is assigned below
+  paths: [],
+  selectedRiverId: null,
+  placingType: null,
+  nextObjId: 1,
+  nextRiverId: 1,
+  nextPathId: 1
+};
+state.rivers.forEach(r => { r.id = state.nextRiverId++; });
+
+const fairiesLayer = document.getElementById("fairiesLayer");
+const happeningsLayer = document.getElementById("happeningsLayer");
+// groundLayer/topLayer both point at the same merged, y-sorted group now
+// (see the HTML comment above #decorLayer for why) — kept as two names
+// since a lot of existing code below still refers to "ground" vs "top"
+// placement, and there's no need to touch every one of those call sites.
+const decorLayer = document.getElementById("decorLayer");
+const groundLayer = decorLayer;
+const topLayer = decorLayer;
+const riverLayer = document.getElementById("riverLayer");
+const pathLayer = document.getElementById("pathLayer");
+const forestCluster = document.getElementById("forestCluster");
+const libraryCluster = document.getElementById("libraryCluster");
+const scene = document.getElementById("scene");
+
+function insideIsland(x, y){
+  for(const p of BODY_PARTS){
+    if(p.type === "circle"){
+      const r = Math.max(4, p.r - p.grassMargin);
+      if(Math.hypot(x-p.cx, y-p.cy) <= r) return true;
+    } else if(p.type === "pacman"){
+      const r = Math.max(4, p.r - p.grassMargin);
+      if(inPacman(x, y, p.cx, p.cy, r, p.mouthAngle, p.mouthWidth)) return true;
+    } else if(p.type === "roundrect"){
+      const w = Math.max(8, p.w - p.grassMargin*2), h = Math.max(8, p.h - p.grassMargin*2);
+      const rx = Math.max(4, Math.min(p.rx - p.grassMargin*0.5, w/2, h/2));
+      if(inRoundRect(x, y, p.cx, p.cy, w, h, rx)) return true;
+    } else {
+      const rx = Math.max(4, p.rx - p.grassMargin), ry = Math.max(4, p.ry - p.grassMargin);
+      if(inRotatedEllipse(x, y, p.cx, p.cy, rx, ry, p.rot)) return true;
+    }
+  }
+  return false;
+}
+
+/* 新しく手に入った妖精を置く場所を、島の中からランダムに探す */
+function randomIslandPoint(){
+  for(let tries=0; tries<40; tries++){
+    const x = 1300 + Math.random()*2500;
+    const y = 900 + Math.random()*3900;
+    if(insideIsland(x, y)) return {x, y};
+  }
+  return {x:2700, y:2500};
+}
+
+/* ============================================================
+   1c. FAIRY OBSTACLE AVOIDANCE (lightweight, not full pathfinding)
+   Flowers, path tiles, and the river are always walkable. Everything
+   else placed on the island (trees, houses, fences, and the visible
+   happening markers) is solid. Wander targets are rejected if the
+   straight line to them would cross a solid object — cheap, but it's
+   enough to make fences form a real enclosure and stop fairies from
+   clipping through houses/trees.
+   ============================================================ */
+const OBSTACLE_RADIUS = { tree:26, house:55, fence:18, fenceV:18, rock:28, spiderweb:22, whirlpool:22, hotspring:40 };
+/* 当たり判定の区画（グリッド）管理:
+   障害物を 200x200 の区画ごとに登録しておき、判定のときは調べたい地点が
+   属する1区画の障害物だけを見る。木や柵が何百個に増えても、1回の判定は
+   「その場所の近くの数個」を見るだけで済む。
+   登録時の半径には余白(OBSTACLE_PAD)を足してあるので、妖精の大きさ分
+   (selfRadius ≤ OBSTACLE_PAD)は1区画の参照だけで取りこぼさない。
+   オブジェクトを置く／消す／動かすときに invalidateObstacleGrid() を呼ぶと、
+   次の判定のときに作り直される。
+   「今見えているか」(happening-hidden) は変わりやすいので登録せず、
+   判定のたびにその場で確認している。 */
+const OBSTACLE_CELL = 200, OBSTACLE_PAD = 80;
+let obstacleGrid = null;
+function invalidateObstacleGrid(){ obstacleGrid = null; }
+function obstacleCellKey(gx, gy){ return (gx + 1000) * 4096 + (gy + 1000); }
+function buildObstacleGrid(){
+  const grid = new Map();
+  for(const o of state.objects){
+    const baseR = OBSTACLE_RADIUS[o.type];
+    if(!baseR) continue; // flower / path tiles etc. are walkable, not obstacles
+    const scale = ((o.sx||1) + (o.sy||1)) / 2;
+    const r = baseR*scale + OBSTACLE_PAD;
+    const gx0 = Math.floor((o.x - r)/OBSTACLE_CELL), gx1 = Math.floor((o.x + r)/OBSTACLE_CELL);
+    const gy0 = Math.floor((o.y - r)/OBSTACLE_CELL), gy1 = Math.floor((o.y + r)/OBSTACLE_CELL);
+    for(let gx=gx0; gx<=gx1; gx++){
+      for(let gy=gy0; gy<=gy1; gy++){
+        const k = obstacleCellKey(gx, gy);
+        let list = grid.get(k);
+        if(!list){ list = []; grid.set(k, list); }
+        list.push(o);
+      }
+    }
+  }
+  return grid;
+}
+function collidesWithObstacle(x, y, selfRadius){
+  selfRadius = selfRadius || 14;
+  let candidates;
+  if(selfRadius > OBSTACLE_PAD){
+    candidates = state.objects; // 想定外に大きい相手のときだけ、従来どおり全件確認
+  } else {
+    if(!obstacleGrid) obstacleGrid = buildObstacleGrid();
+    candidates = obstacleGrid.get(obstacleCellKey(Math.floor(x/OBSTACLE_CELL), Math.floor(y/OBSTACLE_CELL)));
+    if(!candidates) return false;
+  }
+  for(const o of candidates){
+    const baseR = OBSTACLE_RADIUS[o.type];
+    if(!baseR) continue;
+    if(o.dom.classList.contains("happening-hidden")) continue; // not currently visible/physical
+    const scale = ((o.sx||1) + (o.sy||1)) / 2;
+    if(Math.hypot(x-o.x, y-o.y) < baseR*scale + selfRadius) return true;
+  }
+  return false;
+}
+function pathBlocked(x0, y0, x1, y1, selfRadius){
+  const steps = 6;
+  for(let i=1; i<=steps; i++){
+    const t = i/steps;
+    if(collidesWithObstacle(x0+(x1-x0)*t, y0+(y1-y0)*t, selfRadius)) return true;
+  }
+  return false;
+}
+
+/* ============================================================
+   5. DECORATIONS
+   ============================================================ */
+const OBJECT_TYPES = {
+  tree: {emoji:"🌳", label:"き", build:buildTree, layer:"ground"},
+  flower: {emoji:"🌸", label:"はな", build:buildFlower, layer:"ground"},
+  grass: {emoji:"🌱", label:"くさ", build:buildGrass, layer:"ground"},
+  house: {emoji:"🏠", label:"おうち", build:buildHouse, layer:"top"},
+  fence: {emoji:"🚧", label:"さく", build:buildFence, layer:"ground"},
+  fenceV: {emoji:"🚧", label:"さく", build:buildFenceV, layer:"ground"},
+  // happening markers — placed on "top" so they visibly sit above the river.
+  // hiddenFromPalette: true means players can no longer place these
+  // themselves; they only appear pre-placed via START_HAPPENINGS and
+  // through the happening system itself.
+  rock: {emoji:"🪨", label:"いわ", build:buildRock, layer:"top", hiddenFromPalette:true},
+  spiderweb: {emoji:"🕸️", label:"くものす", build:buildSpiderweb, layer:"top", hiddenFromPalette:true},
+  whirlpool: {emoji:"🌀", label:"うずまき", build:buildWhirlpool, layer:"top", hiddenFromPalette:true},
+  hotspring: {emoji:"♨️", label:"おんせん", build:buildHotSpring, layer:"top", hiddenFromPalette:true}
+  // note: "virus" is intentionally NOT in the palette — it spawns
+  // automatically at random and wanders on its own (see scatterViruses below)
+};
+
+function buildRock(){
+  const outer = el("g");
+  const g = el("g", {class:"happening-shrink", filter:"url(#tinyShadow)"});
+  g.appendChild(el("ellipse", {cx:0, cy:16, rx:27, ry:7, fill:"#00000025"}));
+  // main boulder — soft irregular silhouette with a dimensional gradient
+  const body = el("path", {
+    d:"M -23,9 C -27,-4 -21,-16 -9,-20 C -1,-26 9,-25 16,-18 C 25,-14 27,-3 23,6 " +
+      "C 27,14 20,22 9,22 C 3,26 -8,26 -14,21 C -22,20 -25,15 -23,9 Z",
+    fill:"url(#rockGrad)"
+  });
+  g.appendChild(body);
+  // crevice shading (darker facets for depth)
+  g.appendChild(el("path", {d:"M -9,-20 C -1,-26 9,-25 16,-18 C 12,-15 4,-15 -2,-17 C -6,-18 -8,-19 -9,-20 Z", fill:"#00000018"}));
+  g.appendChild(el("path", {d:"M -23,9 C -25,3 -24,-4 -20,-10 C -18,-2 -18,7 -21,14 C -22,12 -23,10 -23,9 Z", fill:"#00000022"}));
+  g.appendChild(el("path", {d:"M 9,22 C 3,26 -8,26 -14,21 C -8,18 1,18 9,20 C 9,20 9,21 9,22 Z", fill:"#00000020"}));
+  // crack lines
+  g.appendChild(el("path", {d:"M -4,-11 L 3,-15 M 1,-2 L 9,-6", stroke:"#5c584f", "stroke-width":1.3, "stroke-linecap":"round", fill:"none", opacity:"0.55"}));
+  // soft highlight catching the light
+  g.appendChild(el("ellipse", {cx:-8, cy:-11, rx:9, ry:5, fill:"#ffffff", opacity:"0.35", filter:"url(#softBlur4)"}));
+  // little moss patch for character
+  g.appendChild(el("ellipse", {cx:12, cy:13, rx:8, ry:4.5, fill:"#7fae4f", opacity:"0.55", filter:"url(#softBlur4)"}));
+  // generous invisible hit-area so it's easy to tap even though the
+  // painted shape is irregular and doesn't fill its own bounding box
+  const hit = el("circle", {cx:0, cy:0, r:32, fill:"transparent", class:"happening-hit-area"});
+  outer.appendChild(hit);
+  outer.appendChild(g);
+  return outer;
+}
+function buildSpiderweb(){
+  const outer = el("g");
+  const inner = el("g", {class:"happening-shrink", opacity:"0.92", filter:"url(#tinyShadow)"});
+  const r = 24;
+  const spokes = 7;
+  const anchors = [];
+  for(let i=0;i<spokes;i++){
+    const a = -Math.PI/2 + (i/spokes)*Math.PI*2;
+    anchors.push([Math.cos(a)*r, Math.sin(a)*r]);
+    inner.appendChild(el("line", {x1:0, y1:0, x2:Math.cos(a)*r, y2:Math.sin(a)*r, stroke:"#f4f6fa", "stroke-width":1, opacity:"0.8"}));
+  }
+  // sagging silk rings — quadratic curves between spokes instead of straight
+  // segments, so each strand droops naturally like real spider silk
+  [0.4,0.65,0.88,1.05].forEach(f=>{
+    let d = "";
+    for(let i=0;i<=spokes;i++){
+      const idx = i % spokes;
+      const [ax,ay] = anchors[idx];
+      const px = ax*f, py = ay*f;
+      if(i===0){ d += `M ${px},${py} `; continue; }
+      const [pax,pay] = anchors[(idx+spokes-1)%spokes];
+      const midx = (pax*f+px)/2, midy = (pay*f+py)/2;
+      const sag = 1 + (r*f)*0.06;
+      d += `Q ${midx*sag},${midy*sag} ${px},${py} `;
+    }
+    inner.appendChild(el("path", {d, fill:"none", stroke:"#f4f6fa", "stroke-width":0.9, opacity:"0.75"}));
+  });
+  // dew-glint highlights
+  [[6,-14],[-10,6],[13,10]].forEach(p=>{
+    inner.appendChild(el("circle", {cx:p[0], cy:p[1], r:1.1, fill:"#ffffff", opacity:"0.85"}));
+  });
+  // spider sitting just off-center
+  const spider = el("g", {transform:"translate(4,-2)"});
+  spider.appendChild(el("ellipse", {cx:0, cy:2.5, rx:2.6, ry:3.2, fill:"#3d3a3f"}));
+  spider.appendChild(el("circle", {cx:0, cy:-2, r:2, fill:"#3d3a3f"}));
+  [[-1,-3],[1,-3]].forEach(p=> spider.appendChild(el("circle", {cx:p[0], cy:p[1], r:0.5, fill:"#ff8fa3"})));
+  [[-2.4,-1.4],[-2.4,1.4],[2.4,-1.4],[2.4,1.4]].forEach(p=>{
+    spider.appendChild(el("path", {d:`M ${p[0]*0.3},${p[1]*0.3} Q ${p[0]*1.4},${p[1]*0.6} ${p[0]*2.2},${p[1]*1.7}`, stroke:"#3d3a3f", "stroke-width":0.7, fill:"none", "stroke-linecap":"round"}));
+  });
+  inner.appendChild(spider);
+  const hit = el("circle", {cx:0, cy:0, r:28, fill:"transparent", class:"happening-hit-area"});
+  outer.appendChild(hit);
+  outer.appendChild(inner);
+  return outer;
+}
+function buildWhirlpool(){
+  // outer group only carries the placement transform; the CSS spin
+  // animation lives on the inner group so it never fights the position
+  // attribute that placeObject sets on the returned root element
+  // (same reason the flowers needed a two-layer split).
+  const outer = el("g");
+  const shrink = el("g", {class:"happening-shrink"}); // middle layer: shrinks away on resolve
+  const spin = el("g", {class:"whirl-spin"});
+  spin.appendChild(el("circle", {cx:0, cy:0, r:23, fill:"url(#whirlGrad)", opacity:"0.9"}));
+  const arms = 3;
+  for(let i=0;i<arms;i++){
+    const rot = (360/arms)*i;
+    let d = "M 20,0 ";
+    for(let a=8; a<=520; a+=14){
+      const rad = a*Math.PI/180;
+      const rr = 20 * Math.pow(1 - a/560, 1.15);
+      d += `L ${Math.cos(rad)*rr},${Math.sin(rad)*rr} `;
+    }
+    spin.appendChild(el("path", {d, fill:"none", stroke:"#eaf9ff", "stroke-width":2.4, "stroke-linecap":"round", opacity:0.75, transform:`rotate(${rot})`}));
+  }
+  spin.appendChild(el("circle", {cx:0, cy:0, r:4, fill:"#04304a", opacity:"0.8"}));
+  // a few bubbles caught in the current
+  [[14,-6,1.6],[-10,10,1.2],[6,15,1],[-15,-8,1.3]].forEach(b=>{
+    spin.appendChild(el("circle", {cx:b[0], cy:b[1], r:b[2], fill:"#ffffff", opacity:"0.55"}));
+  });
+  shrink.appendChild(spin);
+  // gentle ripple ring outside the spin, drifting independently for extra depth
+  const ripple = el("circle", {class:"whirl-ripple", cx:0, cy:0, r:26, fill:"none", stroke:"#bdeaf7", "stroke-width":1.6, opacity:"0.5"});
+  shrink.appendChild(ripple);
+  const hit = el("circle", {cx:0, cy:0, r:28, fill:"transparent", class:"happening-hit-area"});
+  outer.appendChild(hit);
+  outer.appendChild(shrink);
+  return outer;
+}
+function buildVirus(){
+  const outer = el("g", {class:"virus-root"});
+  const shrink = el("g", {class:"happening-shrink"}); // shrinks away when cured
+  // wraps the whole creature at 3x size (originally 4x per an earlier
+  // request that viruses were too small to tap reliably; brought down to
+  // 3x afterward). This can't just be a bigger radius on every shape
+  // below — it's a separate plain-attribute transform on its own wrapping
+  // group, kept OUTSIDE .virus-bob on purpose: .virus-bob has its own CSS
+  // transform animation (the wobble), and a CSS transform on an element
+  // always overrides any transform="" attribute on that same element, so
+  // a scale attribute placed directly on .virus-bob would just get
+  // silently discarded the moment the wobble animation kicks in.
+  const scaleWrap = el("g", {transform:"scale(3)"});
+  // no filter here on purpose — .virus-bob is continuously animated
+  // (steps(63) wobble) for as long as the virus exists, i.e. always, and
+  // a filtered+animated element needs its own composited layer kept live
+  // the whole time; same reasoning as dropping the fairies' shadow filter
+  const bob = el("g", {class:"virus-bob"});
+  bob.appendChild(el("circle", {cx:0, cy:0, r:14, fill:"#9cc95f"})); // flat colour, no gradient, per request
+  // soft mottled patches for texture instead of flat spikes-only look
+  [[-5,-4,3.4],[5,3,2.6],[-2,6,2.2]].forEach(p=>{
+    bob.appendChild(el("circle", {cx:p[0], cy:p[1], r:p[2], fill:"#87b955", opacity:"0.55"}));
+  });
+  const spikes = 9;
+  for(let i=0;i<spikes;i++){
+    const a = (i/spikes)*Math.PI*2 + 0.2;
+    const wob = 1 + Math.sin(i*2.1)*0.12;
+    const x1 = Math.cos(a)*14, y1 = Math.sin(a)*14;
+    const x2 = Math.cos(a)*(19*wob), y2 = Math.sin(a)*(19*wob);
+    bob.appendChild(el("line", {x1, y1, x2, y2, stroke:"#88b957", "stroke-width":2.2, "stroke-linecap":"round"}));
+    bob.appendChild(el("circle", {cx:x2, cy:y2, r:2.8, fill:"#a8d16c"}));
+  }
+  // a small silly face — keeps it cute rather than gross, matching the island's tone
+  bob.appendChild(el("ellipse", {cx:-4, cy:-1, rx:1.4, ry:1.8, fill:"#3a3a1f"}));
+  bob.appendChild(el("ellipse", {cx:4, cy:-1, rx:1.4, ry:1.8, fill:"#3a3a1f"}));
+  bob.appendChild(el("path", {d:"M -3,5 Q 0,8 3,5", stroke:"#3a3a1f", "stroke-width":1.2, fill:"none", "stroke-linecap":"round"}));
+  // hit area lives outside the scale wrapper, in outer's own (unscaled)
+  // coordinate space, so its radius is set directly to the 3x-equivalent
+  // size (36*3) instead of being scaled implicitly
+  const hit = el("circle", {cx:0, cy:0, r:108, fill:"transparent", class:"happening-hit-area"});
+  outer.appendChild(hit);
+  scaleWrap.appendChild(bob);
+  shrink.appendChild(scaleWrap);
+  outer.appendChild(shrink);
+  return outer;
+}
+function buildHotSpring(){
+  const g = el("g");
+  const hit = el("ellipse", {cx:0, cy:20, rx:46, ry:22, fill:"transparent", class:"happening-hit-area"});
+  g.appendChild(hit);
+  g.appendChild(el("ellipse", {cx:0, cy:22, rx:42, ry:14, fill:"url(#onsenRimGrad)"}));
+  g.appendChild(el("ellipse", {cx:0, cy:19, rx:34, ry:10.5, fill:"url(#onsenWaterGrad)"}));
+  g.appendChild(el("ellipse", {cx:-9, cy:15, rx:12, ry:3.6, fill:"#ffffff", opacity:"0.5"}));
+  // gentle ripple arcs on the surface
+  [[-14,20,10],[10,23,13]].forEach(p=>{
+    g.appendChild(el("path", {d:`M ${p[0]-p[2]/2},${p[1]} Q ${p[0]},${p[1]-3} ${p[0]+p[2]/2},${p[1]}`, stroke:"#ffffff", "stroke-width":1.4, fill:"none", opacity:"0.55", "stroke-linecap":"round"}));
+  });
+  // small stones ringing the edge
+  [[-30,20],[-18,29],[6,30],[24,27],[33,17]].forEach(p=>{
+    g.appendChild(el("circle", {cx:p[0], cy:p[1], r:3.2, fill:"#8a7256"}));
+  });
+  // rising steam — soft blurred wisps on independent loops, staggered so
+  // they never move in unison; wrapped in its own group so it can be
+  // toggled on/off as a whole (only "steaming" while fever is active).
+  // These sit on CHILD elements only, so they never conflict with the
+  // placement transform on the root <g>.
+  const steamGroup = el("g", {class:"steam-group"});
+  [-16,-4,10,20].forEach((dx,i)=>{
+    const w = el("path", {
+      class:"steam-rise",
+      d:`M ${dx},4 Q ${dx-9},-14 ${dx+2},-28 Q ${dx+11},-42 ${dx},-56`,
+      fill:"none", stroke:"#ffffff", "stroke-width":4, "stroke-linecap":"round",
+      opacity:0.5
+      // filter:url(#steamBlur) removed — a blurred element needs its own
+      // composited layer, and this ran on 4 elements continuously for as
+      // long as the fever happening was active. Plain (unblurred) lines
+      // per request; thinner + a bit more transparent than before so the
+      // harder edge reads as soft-ish rather than a stiff white line.
+    });
+    w.style.animationDuration = (2.6 + i*0.35) + "s";
+    w.style.animationDelay = (-i*0.6) + "s";
+    steamGroup.appendChild(w);
+  });
+  g.appendChild(steamGroup);
+  return g;
+}
+
+function buildTree(){
+  const g = el("g", {filter:"url(#tinyShadow)"});
+  g.appendChild(el("ellipse", {cx:0, cy:9, rx:9, ry:5, fill:"#00000022"})); // moved down to sit under the (now taller) trunk's actual base instead of floating near its middle
+  // trunk drawn taller, and the low/wide canopy circle below is pulled up
+  // and shrunk a bit — previously that circle's bottom edge sat almost
+  // exactly at the trunk's bottom edge, so the trunk was nearly fully
+  // hidden behind the foliage. Now a clear strip of trunk shows beneath it.
+  g.appendChild(el("rect", {x:-4, y:-14, width:8, height:22, rx:3, fill:"#8a6338", stroke:"#6b4a26", "stroke-width":1}));
+  const colors = ["#6fae2c","#5a9722","#84c245"];
+  [[0,-30,20],[-14,-20,15],[14,-20,15],[0,-16,13]].forEach((p,i)=>{
+    g.appendChild(el("circle", {cx:p[0], cy:p[1], r:p[2], fill:colors[i%colors.length]}));
+  });
+  return g;
+}
+function buildFlower(forceColor){
+  // outer group holds the fixed position/scale set by placeObject via the
+  // SVG "transform" attribute; inner group gets the CSS sway animation.
+  // (A CSS transform animation on the SAME element as the position
+  // attribute would overwrite it, snapping the flower to the origin —
+  // hence the two-layer structure, same pattern as the lung balloons.)
+  // Everything below is 1.5x the original size per request.
+  const outer = el("g");
+  const inner = el("g", {class:"flower-sway"});
+  // light blue removed — too close to the river's own colour
+  const colors = ["#ff8fa3","#ffd166","#c9b3ef","#ff6b6b","#ffa94d","#f783ac","#eebefa","#ff9ecf","#ffe066"];
+  const c = forceColor || colors[Math.floor(Math.random()*colors.length)];
+  inner.appendChild(el("ellipse", {cx:0, cy:10, rx:7.5, ry:3.75, fill:"#00000022"})); // moved down to sit under the stem's actual base
+  // stem drawn BEFORE the petals path below, so the petals paint over its
+  // top end instead of the stem sitting in front of the flower head —
+  // it was being added last (=drawn on top) before, which is what made
+  // it look like it was poking out over the petals
+  inner.appendChild(el("rect", {x:-2.25, y:-9, width:4.5, height:18, fill:"#6fae2c"}));
+  // all 5 petals as ONE path (5 subpaths sharing a single fill) instead of
+  // 5 separate ellipses. Bezier-approximated curves came out too pointy
+  // twice in a row, so this uses SVG's native elliptical-arc path command
+  // instead — an exact ellipse, not an approximation, rotated per petal
+  // around the flower's own center. Same fewer-elements saving as before,
+  // just with zero curve-shape guesswork this time.
+  const fcx = 0, fcy = -12, rx = 6, ry = 4.5;
+  let petalsD = "";
+  for(let i=0;i<5;i++){
+    const ang = i*72, rad = ang*Math.PI/180;
+    const ccx = fcx + Math.cos(rad)*7.5, ccy = fcy + Math.sin(rad)*7.5; // this petal's own center
+    const v1x = ccx - Math.cos(rad)*rx, v1y = ccy - Math.sin(rad)*rx; // near vertex (toward flower center)
+    const v2x = ccx + Math.cos(rad)*rx, v2y = ccy + Math.sin(rad)*rx; // far vertex (petal tip)
+    petalsD += `M${v1x.toFixed(1)},${v1y.toFixed(1)} A${rx},${ry} ${ang} 0,1 ${v2x.toFixed(1)},${v2y.toFixed(1)} A${rx},${ry} ${ang} 0,1 ${v1x.toFixed(1)},${v1y.toFixed(1)} Z `;
+  }
+  inner.appendChild(el("path", {d:petalsD.trim(), fill:c, class:"flower-petals"}));
+  inner.appendChild(el("circle", {cx:0, cy:-12, r:4.5, fill:"#ffe8a3"}));
+  inner.style.animationDuration = (1.6 + Math.random()*1.4).toFixed(2) + "s";
+  inner.style.animationDelay = "-" + (Math.random()*2).toFixed(2) + "s";
+  const hit = el("circle", {cx:0, cy:-6, r:24, fill:"transparent", class:"happening-hit-area"});
+  outer.appendChild(hit);
+  outer.appendChild(inner);
+  return outer;
+}
+function buildHouse(){
+  const g = el("g", {filter:"url(#tinyShadow)"});
+  g.appendChild(el("ellipse", {cx:0, cy:20, rx:30, ry:8, fill:"#00000022"}));
+  g.appendChild(el("rect", {x:-24, y:-10, width:48, height:28, rx:4, fill:"#f6e6c8"}));
+  g.appendChild(el("polygon", {points:"-28,-10 0,-38 28,-10", fill:"#e8798a"}));
+  g.appendChild(el("rect", {x:-7, y:2, width:14, height:16, rx:2, fill:"#a9713f"}));
+  g.appendChild(el("circle", {cx:-16, cy:2, r:5, fill:"#8fd6f2", stroke:"#fff", "stroke-width":2}));
+  g.appendChild(el("circle", {cx:16, cy:2, r:5, fill:"#8fd6f2", stroke:"#fff", "stroke-width":2}));
+  return g;
+}
+function buildFence(){
+  const g = el("g");
+  g.appendChild(el("ellipse", {cx:0, cy:14, rx:20, ry:4, fill:"#00000014"}));
+  g.appendChild(el("rect", {x:-19, y:2, width:38, height:5, rx:2.5, fill:"#e8c48f"}));
+  [-13,0,13].forEach(dx=>{
+    g.appendChild(el("rect", {x:dx-4, y:-10, width:8, height:20, rx:3, fill:"#f6dcae"}));
+    g.appendChild(el("path", {d:`M ${dx-4},-10 L ${dx},-16 L ${dx+4},-10 Z`, fill:"#f6dcae"}));
+    g.appendChild(el("path", {d:`M ${dx-4},-10 L ${dx},-16 L ${dx+4},-10 L ${dx+4},10 L ${dx-4},10 Z`, fill:"none", stroke:"#d8ac6e", "stroke-width":1.6, "stroke-linejoin":"round"}));
+  });
+  g.appendChild(el("rect", {x:-19, y:2, width:38, height:5, rx:2.5, fill:"none", stroke:"#d8ac6e", "stroke-width":1.4}));
+  return g;
+}
+function buildFenceV(){
+  // front-upper angled view of each post (body + angled cap), all the
+  // same size — no perspective/size trick, just a consistent row of posts
+  const g = el("g");
+  g.appendChild(el("ellipse", {cx:0, cy:5, rx:8, ry:23, fill:"#00000012"}));
+  g.appendChild(el("rect", {x:-2.2, y:-19, width:4.4, height:42, rx:2, fill:"#e8c48f"}));
+  [-15,-5,5,15].forEach(dy=>{
+    const rx = 6.8, ry = 3.6, bodyH = 8;
+    // post body: gives the peg some visible height/thickness
+    g.appendChild(el("rect", {x:-rx*0.72, y:dy-1, width:rx*1.44, height:bodyH, rx:rx*0.5, fill:"#d8ac6e"}));
+    // angled cap on top (front-upper viewing angle, not straight overhead)
+    g.appendChild(el("ellipse", {cx:0, cy:dy-1, rx, ry, fill:"#f6dcae"}));
+    g.appendChild(el("ellipse", {cx:0, cy:dy-1, rx, ry, fill:"none", stroke:"#c9975c", "stroke-width":1.2}));
+  });
+  return g;
+}
+function buildGrass(){
+  const outer = el("g");
+  const inner = el("g", {class:"grass-sway"});
+  inner.appendChild(el("ellipse", {cx:0, cy:4, rx:11, ry:3, fill:"#00000015"})); // nudged down to meet the blades' own base exactly
+  const blades = [
+    {d:"M -2,4 Q -6,-10 -12,-19", c:"#7ec850"},
+    {d:"M -1,4 Q -3,-15 -6,-24",  c:"#8fd65f"},
+    {d:"M 0,4 Q 0,-17 0,-27",     c:"#6fbf46"},
+    {d:"M 1,4 Q 3,-15 6,-24",     c:"#8fd65f"},
+    {d:"M 2,4 Q 6,-10 12,-19",    c:"#7ec850"}
+  ];
+  blades.forEach(b=>{
+    inner.appendChild(el("path", {d:b.d, stroke:b.c, "stroke-width":3.2, fill:"none", "stroke-linecap":"round"}));
+  });
+  inner.style.animationDuration = (1.8 + Math.random()*1.2).toFixed(2) + "s";
+  inner.style.animationDelay = "-" + (Math.random()*2).toFixed(2) + "s";
+  const hit = el("circle", {cx:0, cy:-8, r:15, fill:"transparent"});
+  outer.appendChild(hit);
+  outer.appendChild(inner);
+  return outer;
+}
+
+function buildPathIconPreview(){
+  const g = el("g");
+  const d = "M -14,10 Q -6,-6 2,2 T 14,-10";
+  g.appendChild(el("path", {d, fill:"none", stroke:"#dfc38c", "stroke-width":8, "stroke-linecap":"round"}));
+  g.appendChild(el("path", {d, fill:"none", stroke:"#eddcae", "stroke-width":1.4, "stroke-dasharray":"1 5", opacity:"0.8"}));
+  return g;
+}
+
+const HIDDEN_UNTIL_TRIGGERED = ["rock","spiderweb","whirlpool"];
+function placeObject(type, x, y, sx, sy){
+  sx = sx || 1; sy = sy || 1;
+  const info = OBJECT_TYPES[type];
+  const g = info.build();
+  g.setAttribute("transform", `translate(${x},${y}) scale(${sx},${sy})`);
+  g.classList.add("placed-obj");
+  decorLayer.appendChild(g);
+  const rec = {id: state.nextObjId++, type, x, y, sx, sy, dom:g};
+  state.objects.push(rec);
+  invalidateObstacleGrid();
+  reorderDecorLayer();
+
+  // happening markers: rock/spiderweb/whirlpool stay invisible until a
+  // happening reveals one; hotspring/flower are visible always but react
+  // to their own happening state. All are tap-to-resolve. "happening-tappable"
+  // opts them out of the .placed-obj default of pointer-events:none (which
+  // otherwise only allows interaction in eraser mode).
+  if(HIDDEN_UNTIL_TRIGGERED.includes(type)){
+    g.classList.add("happening-hidden", "happening-tappable");
+    wireHappeningTap(g, h => h.targetObj === rec);
+  } else if(type === "hotspring"){
+    g.classList.add("happening-tappable");
+    wireHappeningTap(g, h => h.targetObj === rec);
+  }
+  // note: flowers are NOT wired for tap here — most are just decoration.
+  // The one "main" curated flower used for the gutflora happening gets
+  // wired separately, after all of START_FLOWERS is placed and the
+  // biggest one is known — see mainFlowerObj.
+  return rec;
+}
+function eraseObject(domEl){
+  const idx = state.objects.findIndex(o => o.dom === domEl);
+  if(idx >= 0) state.objects.splice(idx,1);
+  invalidateObstacleGrid();
+  domEl.remove();
+  showHint("消したよ");
+}
+// keeps decorLayer's children ordered by y (their own translate y, read
+// straight off the transform attribute — cheap enough since it only runs
+// on placement/move, never per-frame) so anything lower on screen draws
+// in front of anything higher, like a simple painter's-algorithm depth
+// sort. Objects temporarily pulled into happeningsLayer (see
+// bringToHappeningFront) are just absent from decorLayer.children while
+// that's the case, which is fine — they get folded back in and re-sorted
+// once returned.
+function reorderDecorLayer(){
+  const items = [...decorLayer.children];
+  items.sort((a,b) => {
+    const ay = parseFloat(a.getAttribute("transform").match(/,([-\d.]+)\)/)[1]);
+    const by = parseFloat(b.getAttribute("transform").match(/,([-\d.]+)\)/)[1]);
+    return ay - by;
+  });
+  items.forEach(i => decorLayer.appendChild(i));
+}
+
+/* ---- rivers: simple freehand water paths ---- */
+function pointsToPathD(points){
+  if(points.length === 0) return "";
+  return "M" + points.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L");
+}
+function renderRivers(){
+  riverLayer.innerHTML = "";
+  state.rivers.forEach(r=>{
+    if(r.points.length < 2) return;
+    const d = pointsToPathD(r.points);
+    const g = el("g", {class:"river-path", "data-river-id":r.id});
+    g.appendChild(el("path", {d, fill:"none", stroke:"var(--water-deep)", "stroke-width":72, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+    g.appendChild(el("path", {d, fill:"none", stroke:"var(--water)", "stroke-width":48, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+    riverLayer.appendChild(g);
+    r.dom = g;
+  });
+}
+
+/* ---- paths: freehand-drawn dirt trails, same idea as the river ---- */
+function renderPathTrail(rec){
+  const d = pointsToPathD(rec.points);
+  const g = el("g", {class:"placed-path", "data-path-id":rec.id});
+  g.appendChild(el("path", {d, fill:"none", stroke:"#dfc38c", "stroke-width":26, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+  g.appendChild(el("path", {d, fill:"none", stroke:"#eddcae", "stroke-width":3, "stroke-linecap":"round", "stroke-dasharray":"1 13", opacity:"0.6"}));
+  rec.dom = g;
+  pathLayer.appendChild(g);
+}
+function erasePath(domEl){
+  const idx = state.paths.findIndex(p => p.dom === domEl);
+  if(idx >= 0) state.paths.splice(idx,1);
+  domEl.remove();
+  showHint("消したよ");
+}
+
+function buildBalloon(color, scale){
+  const g = el("g");
+  g.appendChild(el("path", {d:`M0,${34*scale} Q${6*scale},${60*scale} 0,${92*scale}`, stroke:"#c9a876", "stroke-width":1.6, fill:"none"}));
+  g.appendChild(el("ellipse", {cx:0, cy:0, rx:22*scale, ry:27*scale, fill:color}));
+  g.appendChild(el("ellipse", {cx:-7*scale, cy:-9*scale, rx:6*scale, ry:9*scale, fill:"#ffffff55"}));
+  g.appendChild(el("polygon", {points:`${-4*scale},${25*scale} ${4*scale},${25*scale} 0,${34*scale}`, fill:color}));
+  return g;
+}
+(function seedLungBalloons(){
+  const colors = ["#ff8fa3","#ffd166","#c9b3ef","#8bc873","#ffb45c"]; // light blue removed — too close to the river's own colour
+  const clusters = [{cx:2320, cy:2120}, {cx:3080, cy:2120}];
+  const lungLayer = document.getElementById("lungCluster");
+  clusters.forEach(c=>{
+    const spots = [[0,0,2.30],[-116,68,1.80],[104,60,1.90],[-60,-92,1.70],[76,-84,1.80],[12,128,1.60]];
+    spots.forEach(s=>{
+      // outer group holds the fixed position (attribute transform);
+      // inner group gets the CSS sway animation, pivoting near the
+      // string's tie-point so it wobbles like it's caught in the breeze
+      const outer = el("g", {transform:`translate(${c.cx+s[0]},${c.cy+s[1]})`});
+      const inner = el("g", {class:"balloon-sway"});
+      inner.appendChild(buildBalloon(colors[Math.floor(Math.random()*colors.length)], s[2]));
+      inner.style.animationDuration = (2.6 + Math.random()*1.8).toFixed(2) + "s";
+      inner.style.animationDelay = "-" + (Math.random()*3).toFixed(2) + "s";
+      outer.appendChild(inner);
+      lungLayer.appendChild(outer);
+    });
+  });
+})();
+
+/* soft glowing foam just outside the island's sand edge, following
+   the whole silhouette (parts overlap, so the halo reads as one
+   continuous ring around the coastline); pulses gently like surf */
+// all 6 body-part foam outlines as ONE path instead of 6 separate shapes.
+// They used to each be their own translucent element, independently
+// pulsing on a random phase offset — wherever two overlapped (every seam
+// between body parts), the overlap visibly got darker/flickered unevenly,
+// since two separately-painted translucent layers always compound. One
+// path paints its (possibly overlapping) subpaths as a single flat fill
+// at a single opacity, so there's no compounding — and it's 6 elements
+// down to 1, continuing the same "merge into one path" pattern used for
+// the flower petals and the giraffe's spots.
+(function seedFoam(){
+  const foamLayer = document.getElementById("seaFoam");
+  const PAD = 52;
+  const circlePath = (cx,cy,r)=>
+    `M${cx-r},${cy} A${r},${r} 0 1,1 ${cx+r},${cy} A${r},${r} 0 1,1 ${cx-r},${cy} Z `;
+  const ellipsePath = (cx,cy,rx,ry,rot)=>{
+    const rad = (rot||0)*Math.PI/180;
+    const x1 = cx - rx*Math.cos(rad), y1 = cy - rx*Math.sin(rad);
+    const x2 = cx + rx*Math.cos(rad), y2 = cy + rx*Math.sin(rad);
+    return `M${x1.toFixed(1)},${y1.toFixed(1)} A${rx},${ry} ${rot||0} 1,1 ${x2.toFixed(1)},${y2.toFixed(1)} A${rx},${ry} ${rot||0} 1,1 ${x1.toFixed(1)},${y1.toFixed(1)} Z `;
+  };
+  const roundRectPath = (x,y,w,h,rx)=>{
+    const x2 = x+w, y2 = y+h;
+    return `M${x+rx},${y} L${x2-rx},${y} A${rx},${rx} 0 0 1 ${x2},${y+rx} L${x2},${y2-rx} A${rx},${rx} 0 0 1 ${x2-rx},${y2} L${x+rx},${y2} A${rx},${rx} 0 0 1 ${x},${y2-rx} L${x},${y+rx} A${rx},${rx} 0 0 1 ${x+rx},${y} Z `;
+  };
+  // 6 body parts => 6 fully opaque shapes inside ONE <g>; the pulse opacity is
+  // applied to the group as a whole, so the group is flattened first and then
+  // faded as a single unit. Overlapping opaque same-colour shapes are
+  // indistinguishable, so seams between parts can never look darker, no matter
+  // how the browser handles path winding / translucent overlap.
+  const grp = el("g", {class:"foam-pulse"});
+  BODY_PARTS.forEach(p=>{
+    const sp = p.type === "pacman" ? {...p, type:"circle"} : p;
+    let d;
+    if(sp.type === "circle"){
+      d = circlePath(sp.cx, sp.cy, sp.r+PAD);
+    } else if(sp.type === "roundrect"){
+      d = roundRectPath(sp.cx-sp.w/2-PAD, sp.cy-sp.h/2-PAD, sp.w+PAD*2, sp.h+PAD*2, sp.rx+PAD);
+    } else {
+      d = ellipsePath(sp.cx, sp.cy, sp.rx+PAD, sp.ry+PAD, sp.rot||0);
+    }
+    grp.appendChild(el("path", {d:d.trim(), fill:"#eafcff"}));
+  });
+  foamLayer.appendChild(grp);
+})();
+
+/* gentle wave marks scattered across the open water, each drifting
+   and stretching slightly like a real ripple */
+(function seedForest(){
+  const pts = [[2380,810],[2540,730],[2700,700],[2860,730],[3020,810]];
+  pts.forEach(p=>{
+    const g = buildTree();
+    g.setAttribute("transform", `translate(${p[0]},${p[1]}) scale(4.8)`);
+    forestCluster.appendChild(g);
+  });
+})();
+
+/* closed book: a simple, unmistakable shape - rectangular cover,
+   shaded spine edge, embossed title bars and a ribbon bookmark */
+function buildClosedBook(color){
+  const g = el("g", {filter:"url(#tinyShadow)"});
+  g.appendChild(el("ellipse", {cx:0, cy:22, rx:20, ry:5, fill:"#00000018"}));
+
+  // page edges peeking out behind the cover
+  g.appendChild(el("rect", {x:-16, y:-22, width:34, height:42, rx:3, fill:"#fefaf0"}));
+  // cover
+  g.appendChild(el("rect", {x:-18, y:-22, width:32, height:42, rx:4, fill:color}));
+  // shaded spine strip
+  g.appendChild(el("rect", {x:-18, y:-22, width:7, height:42, rx:4, fill:"#00000022"}));
+  g.appendChild(el("rect", {x:-13, y:-22, width:2, height:42, fill:"#ffffff33"}));
+  // embossed title bars
+  g.appendChild(el("rect", {x:-6, y:-3, width:20, height:4, rx:2, fill:"#ffffffb0"}));
+  g.appendChild(el("rect", {x:-6, y:5,  width:14, height:3, rx:1.5, fill:"#ffffff80"}));
+  // ribbon bookmark
+  g.appendChild(el("path", {d:"M6,-22 L12,-22 L12,-2 L9,-7 L6,-2 Z", fill:"#e2574c"}));
+  return g;
+}
+/* ============================================================
+   5b. DRAW FIXED RIVER (locked, not player-editable)
+   ============================================================ */
+renderRivers();
+
+/* ============================================================
+   5c. STARTING FLOWERS (editable baseline)
+   ============================================================ */
+// "curated" flowers are the fixed layout placed here from code — these
+// are the ones that wilt during the gutflora happening. Anything a
+// person places later through the in-editor palette is a plain flower
+// with none of this special behaviour (see the .curated check below).
+// The single largest curated flower (by scale) is treated as THE flower
+// for that happening — the one that actually glows and is tappable —
+// while the rest of the curated bed just droops as a broader "the
+// garden's not doing well" visual around it.
+let mainFlowerObj = null;
+START_FLOWERS.forEach(f => {
+  const rec = placeObject("flower", f.x, f.y, f.sx, f.sy);
+  rec.curated = true;
+  if(f.color){
+    const petals = rec.dom.querySelector(".flower-petals");
+    if(petals) petals.setAttribute("fill", f.color);
+  }
+  if(!mainFlowerObj || (rec.sx*rec.sy) > (mainFlowerObj.sx*mainFlowerObj.sy)) mainFlowerObj = rec;
+});
+if(mainFlowerObj){
+  // wired once, here, like hotspring/rock/etc. in placeObject — NOT inside
+  // triggerHappening, which would stack a fresh duplicate listener on the
+  // same flower every single time this happening fires
+  mainFlowerObj.dom.classList.add("happening-tappable");
+  wireHappeningTap(mainFlowerObj.dom, h => h.targetObj === mainFlowerObj);
+}
+
+/* ============================================================
+   5c-2. STARTING HAPPENING MARKERS (editable baseline)
+   ============================================================ */
+START_HAPPENINGS.forEach(h => placeObject(h.type, h.x, h.y, h.sx, h.sy));
+
+/* ============================================================
+   5d. VIRUSES — spawn at random spots across the whole body and
+   wander slowly forever (not player-placeable, not in state.objects)
+   ============================================================ */
+/* shared attention-spark helpers — see .attention-spark in the CSS for why
+   this replaced the old filter:drop-shadow "happening-attention" glow.
+   The spark is appended directly inside the happening's own DOM element,
+   in its local coordinate space, so cx/cy are small offsets from that
+   object's own center rather than scene coordinates. Declared here (ahead
+   of spawnVirus/scatterViruses below, which run immediately) since it's
+   needed as soon as the first viruses are placed. */
+function addAttentionSpark(parentDom, cx, cy, r){
+  const spark = el("circle", {cx:cx||0, cy:cy||0, r:r||20, fill:"url(#flowerGlowGrad)", class:"attention-spark"});
+  parentDom.appendChild(spark);
+  return spark;
+}
+function removeAttentionSpark(parentDom){
+  const s = parentDom.querySelector(".attention-spark");
+  if(s) s.remove();
+}
+// per-type offsets so the dot sits roughly centered on each shape (they're
+// all built around local origin (0,0), just with different silhouettes)
+const ATTENTION_SPARK_SPEC = {
+  rock:      {cy:0,  r:26},
+  spiderweb: {cy:0,  r:22},
+  whirlpool: {cy:0,  r:22},
+  hotspring: {cy:16, r:26}, // was 34 — the hot spring itself is big, but the glow didn't need to be quite that big too
+  virus:     {cy:0,  r:45}, // scaled to match the 3x virus body
+  flower:    {cx:11, cy:-9, r:22} // shifted right/down from the flower's own (0,-12) — the wilt CSS (rotate(33deg) around the stem base) visually swings the head there, and this spark doesn't wilt with it since it's a sibling of .flower-sway, not inside it
+};
+
+/* ---- rendering priority: characters > happenings > everything else
+   (which is itself y-sorted, see reorderDecorLayer above). A rock/
+   spiderweb/whirlpool/hotspring/flower is a normal decoration most of the
+   time and only needs to jump above ordinary decorations while its
+   happening is active — moving it into happeningsLayer (the second-to-
+   last child of the <svg>, above decorLayer but below fairiesLayer) does
+   that directly; reparenting an existing element is instant and doesn't
+   rebuild anything. spawnVirus goes straight into happeningsLayer
+   instead, since a virus doesn't have a "normal, not-currently-a-
+   happening" decoration state the way the others do — it's always
+   mid-happening from the moment it spawns. fairiesLayer is the very last
+   child of the <svg>, so a fairy running over to fix something stays
+   visible instead of vanishing behind the happening itself. */
+function bringToHappeningFront(dom){
+  happeningsLayer.appendChild(dom);
+}
+function sendBackFromHappeningFront(dom){
+  decorLayer.appendChild(dom);
+  reorderDecorLayer(); // drop it back into its correct y-sorted spot
+}
+
+/* ---- "あと○こ" badge: how many happenings are currently out and
+   waiting to be fixed. Call this any time state.activeHappenings changes
+   (pushed to or filtered) — see spawnVirus / triggerHappening / finishResolve.
+   Declared up here (ahead of spawnVirus/scatterViruses below, which run
+   immediately) since it's needed as soon as the first viruses are placed. */
+const happeningCounterEl = document.getElementById("happeningCounter");
+const happeningCounterText = document.getElementById("happeningCounterText");
+function updateHappeningCounter(){
+  const n = state.activeHappenings.length;
+  if(n > 0){
+    happeningCounterText.textContent = `わるいところ：${n}こ`;
+    happeningCounterText.classList.add("show");
+  } else {
+    happeningCounterText.classList.remove("show");
+  }
+}
+
+/* ---- night mode ----
+   Once the last outstanding happening is dealt with, the island goes to
+   sleep for a bit — a full-screen overlay blocks all interaction and
+   counts down, both as a "you're all caught up" reward and as a soft
+   nudge against playing for too long in one sitting.
+   NIGHT_DURATION_SEC is short right now for testing — swap it for a
+   real number of minutes (e.g. 20*60) once the flow is confirmed.
+   Also declared up here for the same hoisting reason as above; finishResolve
+   (defined below) calls enterNightMode() as soon as it empties the list.
+
+   PERSISTENCE: the whole point of this feature is to discourage playing
+   too much in one sitting, so it needs to survive the tab being closed —
+   otherwise closing and reopening the page would just cancel the wait.
+   NIGHT_STORAGE_KEY holds the wall-clock timestamp (Date.now(), NOT
+   performance.now() — that resets on every page load and can't be
+   compared across reloads) that night mode ends at. resumeNightModeIfNeeded()
+   is called once at startup (see the bottom of the animation-loop section)
+   to pick this back up if the page was closed mid-night. */
+const NIGHT_DURATION_SEC = 30; // TEST VALUE — replace with the real duration later
+const NIGHT_STORAGE_KEY = "kusuri_yousei_night_ends_at";
+const nightOverlayEl = document.getElementById("nightOverlay");
+const nightTimerEl = document.getElementById("nightTimer");
+let nightIntervalId = null;
+
+function formatNightRemaining(sec){
+  if(sec >= 60){
+    return `あと${Math.ceil(sec/60)}ふん`;
+  }
+  return `あと${sec}びょう`; // under a minute — show seconds so the test duration is actually watchable
+}
+
+// existingEndsAt: pass this when resuming a night that was already in
+// progress before the page loaded (see resumeNightModeIfNeeded) — omit it
+// to start a brand new one from right now.
+function enterNightMode(existingEndsAt){
+  if(state.night) return;
+  state.night = true;
+  nightOverlayEl.classList.add("show");
+  const endsAt = existingEndsAt || (Date.now() + NIGHT_DURATION_SEC*1000);
+  try{ window.localStorage.setItem(NIGHT_STORAGE_KEY, String(endsAt)); }catch(e){}
+  const tickTimer = ()=>{
+    const remainingSec = Math.max(0, Math.ceil((endsAt - Date.now())/1000));
+    nightTimerEl.textContent = formatNightRemaining(remainingSec);
+    if(remainingSec <= 0){
+      clearInterval(nightIntervalId);
+      exitNightMode();
+    }
+  };
+  tickTimer();
+  nightIntervalId = setInterval(tickTimer, 1000);
+}
+function exitNightMode(){
+  const wasNight = state.night;
+  state.night = false;
+  nightOverlayEl.classList.remove("show");
+  clearInterval(nightIntervalId);
+  try{ window.localStorage.removeItem(NIGHT_STORAGE_KEY); }catch(e){}
+  if(wasNight){
+    // the animation loop stops itself while state.night is true (see
+    // tick()) — give it a fresh timestamp so fairies don't jump on waking
+    // up, and ask for a frame again since nothing else will if the loop
+    // was genuinely stopped. (scheduleTick() is safe to call even if a
+    // frame is already pending — see its own comment — which matters for
+    // the resumeNightModeIfNeeded() startup path below.)
+    lastFrameT = performance.now();
+    lastWanderT = lastFrameT;
+    lastVirusT = lastFrameT;
+    scheduleTick();
+  }
+  runMorningBurst();
+}
+function runMorningBurst(){
+  // morning: give the island a handful of fresh things to do right away
+  // rather than waiting for the periodic schedule to slowly trickle them
+  // in. triggerHappening() already skips types that are already active,
+  // so three back-to-back calls naturally come out as three different ones.
+  for(let i=0; i<3; i++) triggerHappening();
+  // ...and reset the periodic-schedule clock from this moment, so the
+  // regular 10-minute-cooldown trigger doesn't immediately pile on more
+  // right on top of this batch.
+  try{ window.localStorage.setItem("kusuri_yousei_last_happening_at", String(Date.now())); }catch(e){}
+}
+// called once at startup (see bottom of the animation-loop section) —
+// picks night mode back up if the tab was closed/reloaded mid-countdown,
+// or runs the wake-up burst directly if the countdown finished while gone.
+function resumeNightModeIfNeeded(){
+  let storedEndsAt = 0;
+  try{ storedEndsAt = +window.localStorage.getItem(NIGHT_STORAGE_KEY) || 0; }catch(e){}
+  if(!storedEndsAt) return;
+  if(storedEndsAt > Date.now()){
+    enterNightMode(storedEndsAt);
+  } else {
+    try{ window.localStorage.removeItem(NIGHT_STORAGE_KEY); }catch(e){}
+    runMorningBurst();
+  }
+}
+
+function spawnVirus(x, y){
+  const g = buildVirus();
+  g.setAttribute("transform", `translate(${x},${y})`);
+  addAttentionSpark(g, 0, ATTENTION_SPARK_SPEC.virus.cy, ATTENTION_SPARK_SPEC.virus.r);
+  bringToHappeningFront(g); // a virus is always its own active happening — always frontmost, never sent back
+  const rec = {x, y, targetX:x, targetY:y, phase:Math.random()*10, wanderAt:0, dom:g};
+  state.viruses.push(rec);
+  wireHappeningTap(g, h => h.targetVirus === rec);
+  // every virus is, from the moment it appears, its own tappable
+  // "germs" happening — no need to wait for the periodic trigger
+  state.activeHappenings.push({typeId:"germs", targetObj:null, targetVirus:rec, x, y, phase:"idle", respondingFairy:null});
+  updateHappeningCounter();
+}
+(function scatterViruses(){
+  const VIRUS_COUNT = 4;
+  let seed = 4242;
+  function rand(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+  let placed = 0, attempts = 0;
+  while(placed < VIRUS_COUNT && attempts < 800){
+    attempts++;
+    const x = rand()*5400, y = rand()*5900;
+    if(!insideIsland(x,y)) continue;
+    spawnVirus(x,y);
+    placed++;
+  }
+})();
+
+/* ============================================================
+   6b. HAPPENING SYSTEM
+   Each happening type is tied to one marker object type (or the
+   flower patch / wandering viruses) and one "correct" remedy fairy.
+   Special fairies (canFix:"all") can resolve anything, so a happening
+   is always solvable even before the matching remedy fairy exists.
+
+   Interaction model: rock / spiderweb / whirlpool sit invisible on the
+   island until a happening reveals one; tapping it makes it vanish.
+   The hot spring is a permanent fixture — only its steam (=fever) is
+   toggled, and tapping it clears the steam with a little sparkle.
+   The flower patch just wilts/perks back up. Viruses glow while
+   "acute" and stop glowing (but keep wandering) once tapped.
+   ============================================================ */
+const HAPPENING_TYPES = {
+  constipation: { id:"constipation", objType:"rock",       label:"べんぴ", startMsg:"🪨 岩が腸の流れをせき止めた！ タップして直そう", fixMsg:"かまぐーが流れを戻したよ！" },
+  gutflora:     { id:"gutflora",     objType:"flowerpatch", label:"腸内環境", startMsg:"🌸 花たちの元気がなくなってきた… タップして直そう", fixMsg:"びおびーが腸内環境をととのえたよ！" },
+  phlegm:       { id:"phlegm",       objType:"spiderweb",   label:"たんがらみ", startMsg:"🕸️ 蜘蛛の巣が食道をふさいだ！ タップして直そう", fixMsg:"かるぼんがたんを取り除いたよ！" },
+  stagnation:   { id:"stagnation",   objType:"whirlpool",   label:"胃もたれ", startMsg:"🌀 胃のあたりがぐるぐる止まらない！ タップして直そう", fixMsg:"どんぺんが胃を動かしたよ！" },
+  germs:        { id:"germs",        objType:"virus",       label:"ばいきん", startMsg:"🦠 ばいきんが元気になってきた！ タップして直そう", fixMsg:"こうせいざい妖精がばいきんをやっつけたよ！" },
+  fever:        { id:"fever",        objType:"hotspring",   label:"はつねつ", startMsg:"♨️ 頭が熱っぽくなってきた… タップして直そう", fixMsg:"かろばーどが熱をひかせたよ！" }
+};
+const HAPPENING_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes — change this to tune frequency
+
+function fairyCanFix(fairyType, happeningId){
+  const t = FAIRY_TYPES[fairyType];
+  if(!t || !t.canFix) return false;
+  return t.canFix === "all" || t.canFix.includes(happeningId);
+}
+
+/* wires "tap (without dragging) resolves the matching active happening"
+   onto any object — rocks, the spring, a flower, a virus, whatever
+   matchFn identifies. Mirrors the fairy tap/drag pattern so it plays
+   nicely with panning and edit-mode placement. */
+function wireHappeningTap(dom, matchFn){
+  let down=false, moved=false, downX=0, downY=0;
+  dom.addEventListener("pointerdown", (e)=>{
+    if(state.placingType) return; // edit-mode placement/eraser owns taps then
+    e.stopPropagation();
+    down = true; moved = false;
+    const p = svgPoint(e);
+    downX = p.x; downY = p.y;
+  });
+  dom.addEventListener("pointermove", (e)=>{
+    if(!down) return;
+    const p = svgPoint(e);
+    if(Math.hypot(p.x-downX, p.y-downY) > 5) moved = true;
+  });
+  const release = ()=>{
+    if(!down) return;
+    down = false;
+    if(moved) return;
+    const h = state.activeHappenings.find(matchFn);
+    if(!h) return;
+    dispatchFairy(h);
+  };
+  dom.addEventListener("pointerup", release);
+  dom.addEventListener("pointercancel", ()=>{ down = false; });
+}
+
+/* a few sparkles that pop and fade — used when the hot spring cools down */
+function burstSparkle(parentDom){
+  for(let i=0;i<6;i++){
+    const ang = Math.random()*Math.PI*2;
+    const dist = 16 + Math.random()*22;
+    const star = el("text", {x:(Math.cos(ang)*dist).toFixed(1), y:(Math.sin(ang)*dist).toFixed(1), "font-size":16, "text-anchor":"middle", class:"onsen-spark"});
+    star.textContent = "✨";
+    star.style.animationDelay = (Math.random()*0.15).toFixed(2)+"s";
+    parentDom.appendChild(star);
+    setTimeout(()=> star.remove(), 900);
+  }
+}
+
+function pickAvailableSpot(objType){
+  const used = new Set(state.activeHappenings.map(h => h.targetObj).filter(Boolean));
+  const candidates = state.objects.filter(o => o.type === objType && !used.has(o));
+  if(candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random()*candidates.length)];
+}
+
+/* now unused — the gutflora happening targets one specific flower object
+   (mainFlowerObj) exactly like rock/spiderweb/whirlpool/hotspring do,
+   instead of a bounding-box zone over the whole patch. Removed rather
+   than left dead, since field-zone's CSS rule goes with it too. */
+
+function triggerHappening(forcedId){
+  // "germs" isn't picked here anymore — every virus on the island is
+  // always its own live happening from the moment it spawns (see
+  // scatterViruses/spawnVirus), so there's nothing to randomly "trigger".
+  const ids = Object.keys(HAPPENING_TYPES).filter(id => id !== "germs");
+  const activeIds = new Set(state.activeHappenings.map(h => h.typeId));
+  let choices = forcedId ? [forcedId] : ids.filter(id => !activeIds.has(id));
+  if(choices.length === 0) choices = ids; // everything's already active — pile on anyway
+  const typeId = choices[Math.floor(Math.random()*choices.length)];
+  const def = HAPPENING_TYPES[typeId];
+
+  let targetObj = null, x, y;
+
+  if(def.objType === "flowerpatch"){
+    if(!mainFlowerObj) return; // no curated flowers placed yet — nothing to target
+    // the whole curated bed droops, as a broader "the garden's not doing
+    // well" cue, but only the one big centre flower actually glows/is
+    // the tap target — see the comment by mainFlowerObj's own definition
+    state.objects.filter(o => o.type === "flower" && o.curated).forEach(o => { o.dom.classList.add("happening-wilted"); });
+    targetObj = mainFlowerObj;
+    targetObj.dom.classList.add("happening-active");
+    const s = ATTENTION_SPARK_SPEC.flower;
+    addAttentionSpark(targetObj.dom, s.cx, s.cy, s.r);
+    bringToHappeningFront(targetObj.dom);
+    x = targetObj.x; y = targetObj.y;
+  } else if(def.objType === "hotspring"){
+    targetObj = state.objects.find(o => o.type === "hotspring");
+    if(!targetObj) return;
+    targetObj.dom.classList.add("onsen-steaming");
+    const s = ATTENTION_SPARK_SPEC.hotspring;
+    addAttentionSpark(targetObj.dom, 0, s.cy, s.r);
+    bringToHappeningFront(targetObj.dom);
+    x = targetObj.x; y = targetObj.y;
+  } else {
+    // rock / spiderweb / whirlpool: normally invisible, reveal one now
+    targetObj = pickAvailableSpot(def.objType);
+    if(!targetObj) return; // no free marker of this type right now
+    targetObj.dom.classList.remove("happening-hidden");
+    targetObj.dom.classList.add("happening-active");
+    const s = ATTENTION_SPARK_SPEC[def.objType] || {cy:0, r:24};
+    addAttentionSpark(targetObj.dom, 0, s.cy, s.r);
+    bringToHappeningFront(targetObj.dom);
+    x = targetObj.x; y = targetObj.y;
+  }
+
+  state.activeHappenings.push({typeId, targetObj, targetVirus:null, x, y, phase:"idle", respondingFairy:null});
+  updateHappeningCounter();
+  showHint(def.startMsg);
+}
+
+/* tap received: send the best available fairy running over.
+   Priority: a fairy whose specialty exactly matches this happening,
+   over a "fixes anything" special fairy — and among ties, whichever
+   one is currently nearest, so it feels like someone nearby responds. */
+function dispatchFairy(h){
+  if(h.phase !== "idle") return; // already being handled
+  const free = state.fairies.filter(f => !f.busy);
+  const exact = free.filter(f => { const c = FAIRY_TYPES[f.type].canFix; return Array.isArray(c) && c.includes(h.typeId); });
+  const specials = free.filter(f => FAIRY_TYPES[f.type].canFix === "all");
+  const pool = exact.length ? exact : specials;
+  if(pool.length === 0){
+    showHint("妖精たちはほかのハプニング対応中みたい…少し待ってね");
+    return;
+  }
+  pool.sort((a,b) => Math.hypot(a.x-h.x,a.y-h.y) - Math.hypot(b.x-h.x,b.y-h.y));
+  const fairy = pool[0];
+  fairy.busy = true;
+  fairy.targetX = h.x; fairy.targetY = h.y;
+  h.phase = "traveling";
+  h.respondingFairy = fairy;
+  showHint(`${FAIRY_TYPES[fairy.type].name}が駆けつけているよ！`);
+}
+
+const HAPPENING_SHRINK_MS = 3000; // ~3 seconds for the fairy to work its magic
+
+function beginShrink(h){
+  if(h.phase !== "traveling") return;
+  h.phase = "shrinking";
+  const def = HAPPENING_TYPES[h.typeId];
+  if(def.objType === "flowerpatch"){
+    // un-wilt the whole curated bed, and drop the glow off the main
+    // flower — it stays fully visible throughout (no shrink-away
+    // animation; it's a permanent decoration, not a hide/reveal marker
+    // like rock/spiderweb/whirlpool)
+    state.objects.filter(o => o.type === "flower" && o.curated).forEach(o => o.dom.classList.remove("happening-wilted"));
+    removeAttentionSpark(h.targetObj.dom);
+    h.targetObj.dom.classList.remove("happening-active");
+  } else if(def.objType === "virus"){
+    removeAttentionSpark(h.targetVirus.dom);
+    h.targetVirus.dom.querySelector(".happening-shrink").classList.add("happening-shrinking");
+  } else if(def.objType === "hotspring"){
+    removeAttentionSpark(h.targetObj.dom);
+    h.targetObj.dom.querySelector(".steam-group").classList.add("steam-shrinking");
+  } else {
+    removeAttentionSpark(h.targetObj.dom);
+    h.targetObj.dom.querySelector(".happening-shrink").classList.add("happening-shrinking");
+  }
+  setTimeout(()=> finishResolve(h), HAPPENING_SHRINK_MS);
+}
+
+function finishResolve(h){
+  const def = HAPPENING_TYPES[h.typeId];
+  if(h.respondingFairy){
+    h.respondingFairy.busy = false;
+    h.respondingFairy.wanderAt = performance.now(); // pick a fresh wander target soon
+  }
+  if(def.objType === "flowerpatch"){
+    // un-wilted and un-glowed already at the start of the shrink phase —
+    // just needs to go back to its normal y-sorted spot in decorLayer
+    sendBackFromHappeningFront(h.targetObj.dom);
+  } else if(def.objType === "virus"){
+    // fully removed by the antibiotic fairy — gone for good, not just cured-in-place
+    h.targetVirus.dom.remove();
+    state.viruses = state.viruses.filter(v => v !== h.targetVirus);
+  } else if(def.objType === "hotspring"){
+    h.targetObj.dom.classList.remove("onsen-steaming");
+    const sg = h.targetObj.dom.querySelector(".steam-group");
+    sg.classList.remove("steam-shrinking");
+    sendBackFromHappeningFront(h.targetObj.dom);
+  } else {
+    const shrinkEl = h.targetObj.dom.querySelector(".happening-shrink");
+    shrinkEl.classList.remove("happening-shrinking");
+    h.targetObj.dom.classList.add("happening-hidden");
+    h.targetObj.dom.classList.remove("happening-active");
+    sendBackFromHappeningFront(h.targetObj.dom);
+  }
+  state.activeHappenings = state.activeHappenings.filter(a => a !== h);
+  updateHappeningCounter();
+  if(state.activeHappenings.length === 0){
+    // that was the last one — everyone's all fixed up, time for a break
+    enterNightMode();
+  } else {
+    showHint(def.fixMsg);
+  }
+}
+
+/* ---- periodic scheduling, persisted so it survives closing the tab ---- */
+function checkHappeningSchedule(){
+  let last = 0;
+  try{ last = +window.localStorage.getItem("kusuri_yousei_last_happening_at") || 0; }catch(e){ /* no record yet */ }
+  const now = Date.now();
+  if(now - last >= HAPPENING_INTERVAL_MS){
+    triggerHappening();
+    try{ window.localStorage.setItem("kusuri_yousei_last_happening_at", String(now)); }catch(e){}
+  }
+}
+setTimeout(checkHappeningSchedule, 0);
+setInterval(checkHappeningSchedule, 60 * 1000); // re-check every minute while the page is open
+
+/* ============================================================
+   6. SPAWN FAIRIES
+   万能薬妖精3体は常設。それ以外は、服薬管理アプリでの記録に応じて
+   ガチャ／確定入手で増えていく「所持妖精リスト」からのみ表示する。
+   ============================================================ */
+let youseiNextUid = 1;
+function makeFairyRecord(type, pos){
+  return { id: "y" + (youseiNextUid++), type, x: pos.x, y: pos.y };
+}
+function spawnFairyDom(f){
+  const built = buildFairy(f);
+  built.g.setAttribute("transform", `translate(${f.x},${f.y})`);
+  fairiesLayer.appendChild(built.g);
+  // cache these as plain numbers/strings ONCE instead of re-reading and
+  // re-parsing them out of the DOM (getAttribute + regex/split) every
+  // single animation frame in tick() below — same visual result, far
+  // less string/DOM work per fairy per frame.
+  const r = built.refs;
+  r.legLBase = r.legL.getAttribute("transform") || "";
+  r.legRBase = r.legR.getAttribute("transform") || "";
+  r.headBaseX = parseFloat(r.headWrap.getAttribute("data-bx")) || 0;
+  r.headBaseY = parseFloat(r.headWrap.getAttribute("data-by")) || 0;
+  const now = performance.now();
+  const live = {
+    ...f, dom: built.g, refs: built.refs,
+    targetX:f.x, targetY:f.y,
+    walking:false, phase: Math.random()*10,
+    blinkAt: now + 1500 + Math.random()*3000,
+    wanderAt: now + 3000 + Math.random()*5000,
+    dragging:false, downX:0, downY:0, moved:false,
+    busy:false // true while dispatched to run over and fix a happening
+  };
+  state.fairies.push(live);
+  // drag/tap handlers are attached here, at spawn time, so EVERY spawn path
+  // gets them — before, they were attached once at startup to whichever
+  // fairies existed then, so anything spawned afterwards (a fairy drawn from
+  // the gacha mid-session, or one added by the debug button) couldn't be
+  // dragged or tapped until the page was reloaded.
+  wireFairyInteraction(live);
+  return live;
+}
+
+
+/* ============================================================
+   BOAT ARRIVAL — a new fairy rides a little boat down the river from
+   its entrance to the middle of the flower field, then hops off.
+   Used after the gacha reveal overlay closes, and by the debug
+   "妖精を1体増やす" button. Arrivals are queued so only one boat sails
+   at a time (the camera follows it, so two at once would fight).
+   ============================================================ */
+function makeBoatParts(){
+  const back = el("g", {style:"pointer-events:none"});
+  back.appendChild(el("ellipse", {cx:0, cy:20, rx:54, ry:8, fill:"#ffffff", opacity:"0.35"})); // ripple
+  back.appendChild(el("rect", {x:-36, y:-54, width:3, height:46, fill:"#7a4d28"}));            // mast
+  back.appendChild(el("path", {d:"M-33,-54 L-8,-46 L-33,-38 Z", fill:"#ff6b6b"}));             // pennant
+  back.appendChild(el("path", {d:"M-50,-12 Q-44,20 -22,22 L22,22 Q44,20 50,-12 Q0,-2 -50,-12 Z", fill:"#a9713f", stroke:"#7a4d28", "stroke-width":3, "stroke-linejoin":"round"}));
+  back.appendChild(el("ellipse", {cx:0, cy:-10, rx:45, ry:5, fill:"#6b4423"}));                // dark inside
+  // front lip is a separate group drawn AFTER the fairy, so its legs look tucked inside the boat
+  const front = el("g", {style:"pointer-events:none"});
+  front.appendChild(el("path", {d:"M-48,-9 Q0,3 48,-9 L45,6 Q0,17 -45,6 Z", fill:"#c68a52", stroke:"#7a4d28", "stroke-width":2.5, "stroke-linejoin":"round"}));
+  return {back, front};
+}
+// pans the camera toward (x,y) a bit each frame, unless the person is
+// dragging/pinching the map themselves right now
+function followCameraTo(x, y){
+  if(panState || pinchState) return;
+  const s = baseScale*camScale;
+  const tx = -s*(x - (900 + SCENE_W/2)), ty = -s*(y - (250 + SCENE_H/2));
+  camPanX += (tx-camPanX)*0.12;
+  camPanY += (ty-camPanY)*0.12;
+  applyCameraTransform();
+}
+/* ---- 到着のまとめ処理 ----
+   船で降りた場所はいつも「大きな花のそば」なので、そのままにすると妖精が
+   そこに固まってしまう。到着がひととおり終わったら（またはスキップしたら）
+   画面を一度暗転させ、その間に新しい妖精を島のあちこちへランダムに配置してから
+   明るく戻す。配置した位置は保存するので、開き直しても固まらない。 */
+let arrivalPending = 0;       // 順番待ちを含む、これから到着する妖精の数
+let arrivalSkip = false;      // スキップが押された
+const arrivalBatch = [];      // 今回の到着で島に出た妖精
+const arrivalFadeEl = document.getElementById("arrivalFade");
+const arrivalSkipBtn = document.getElementById("arrivalSkipBtn");
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+
+function landingBase(){
+  return mainFlowerObj ? {x:mainFlowerObj.x, y:mainFlowerObj.y + 31} : {x:2700, y:3215};
+}
+// 船の降り場（大きな花のそば）と、障害物の上を避けて、島の中からランダムに選ぶ
+function pickScatterPoint(){
+  const lb = landingBase();
+  for(let tries=0; tries<80; tries++){
+    const p = randomIslandPoint();
+    if(Math.hypot(p.x-lb.x, p.y-lb.y) < 140) continue;
+    if(collidesWithObstacle(p.x, p.y, 24)) continue;
+    return p;
+  }
+  return randomIslandPoint();
+}
+function placeFairyAt(live, p){
+  live.x = p.x; live.y = p.y;
+  live.targetX = p.x; live.targetY = p.y;
+  live.wanderAt = performance.now() + 800 + Math.random()*2500;
+  live.lastPos = null;
+  live.dom.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+}
+function saveFairyPositions(list){
+  const st = loadYouseiSharedState();
+  let changed = false;
+  list.forEach(l => {
+    const saved = st.fairies.find(r => r.id === l.id);
+    if(saved){ saved.x = l.x; saved.y = l.y; changed = true; }
+  });
+  if(changed) saveYouseiSharedState(st);
+}
+async function finishArrivalBatch(){
+  const batch = arrivalBatch.splice(0).filter(l => state.fairies.includes(l));
+  arrivalSkipBtn.classList.remove("show");
+  if(!batch.length){ arrivalSkip = false; return; }
+  arrivalFadeEl.classList.add("show");
+  await sleepMs(700);
+  batch.forEach(l => { l.arriving = false; l.busy = false; placeFairyAt(l, pickScatterPoint()); });
+  saveFairyPositions(batch);
+  saveFairyPosMap();
+  // 島全体が見える位置に戻して、散らばった様子が分かるようにする
+  camScale = 1; camPanX = 0; camPanY = 0;
+  applyCameraTransform();
+  await sleepMs(250);
+  arrivalFadeEl.classList.remove("show");
+  arrivalSkip = false;
+  showHint("みんな島のあちこちに散らばったよ");
+}
+arrivalSkipBtn.addEventListener("click", ()=>{
+  arrivalSkip = true;
+  arrivalSkipBtn.classList.remove("show");
+});
+
+function runBoatArrival(rec, onSpawn){
+  return new Promise(resolve=>{
+    const river = state.rivers[0];
+    const pts = river ? river.points : [];
+    const base = mainFlowerObj ? {x:mainFlowerObj.x, y:mainFlowerObj.y + 31} : {x:2700, y:3215}; // midway between the river's two passes around the flower
+    let stopIdx = 0, best = Infinity;
+    pts.forEach((p,i)=>{ const d = Math.hypot(p[0]-base.x, p[1]-base.y); if(d < best){ best = d; stopIdx = i; } });
+    if(stopIdx < 1 || arrivalSkip){ // 川がない／スキップ済み — 船なしでそのまま現れる
+      const live = spawnFairyDom({...rec, x:base.x, y:base.y});
+      arrivalBatch.push(live);
+      if(onSpawn) onSpawn(live);
+      resolve(); return;
+    }
+    const cum = [0];
+    for(let i=1;i<=stopIdx;i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+    const total = cum[stopIdx];
+    const sailMs = clamp(total/620, 5, 11) * 1000;
+
+    const live = spawnFairyDom({...rec, x:pts[0][0], y:pts[0][1]});
+    live.arriving = true; live.busy = true;
+    arrivalBatch.push(live);
+    if(onSpawn) onSpawn(live);
+    const {back, front} = makeBoatParts();
+    fairiesLayer.insertBefore(back, live.dom);
+    fairiesLayer.appendChild(front);
+    const name = FAIRY_TYPES[rec.type].name;
+    showHint(`${name}がふねでやってくるよ！`);
+
+    const BS = 0.85;
+    let facing = 1, seg = 0;
+    const place = (x, y, tilt)=>{
+      const tr = `translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${tilt.toFixed(1)}) scale(${facing*BS},${BS})`;
+      back.setAttribute("transform", tr); front.setAttribute("transform", tr);
+    };
+    const setFairy = (x, y)=>{
+      live.x = x; live.y = y;
+      live.dom.setAttribute("transform", `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    };
+    const abort = ()=>{ back.remove(); front.remove(); resolve(); }; // fairy was removed mid-trip
+    // スキップ：船を消して、その場で到着扱いにする（場所はこのあと暗転中にばらける）
+    const cutShort = ()=>{
+      back.remove(); front.remove();
+      setFairy(base.x, base.y);
+      live.arriving = false; live.busy = false;
+      live.targetX = live.x; live.targetY = live.y;
+      resolve();
+    };
+
+    const t0 = performance.now();
+    function sail(now){
+      if(!state.fairies.includes(live)){ abort(); return; }
+      if(arrivalSkip){ cutShort(); return; }
+      const p = Math.min(1, (now-t0)/sailMs);
+      const s = 0.5*p + 0.5*p*p*(3-2*p); // mostly steady, gentle start and stop
+      const d = s*total;
+      while(seg < stopIdx-1 && cum[seg+1] < d) seg++;
+      const segLen = (cum[seg+1]-cum[seg]) || 1;
+      const u = clamp((d-cum[seg])/segLen, 0, 1);
+      const ax = pts[seg][0], ay = pts[seg][1], bx = pts[seg+1][0], by = pts[seg+1][1];
+      const x = ax + (bx-ax)*u, y = ay + (by-ay)*u;
+      const dxn = (bx-ax)/segLen;
+      if(Math.abs(dxn) > 0.35) facing = dxn > 0 ? 1 : -1;
+      const tt = now/1000;
+      const bob = Math.sin(tt*4)*2.5;
+      place(x, y+bob, Math.sin(tt*3)*2.5);
+      setFairy(x, y+bob-26);
+      followCameraTo(x, y);
+      if(p < 1) requestAnimationFrame(sail); else disembark(x, y+bob);
+    }
+    function disembark(bx, by){
+      showHint(`${name}がしまにおりるよ！`);
+      const sx = bx, sy = by-26;
+      const lx = base.x + (Math.random()*120-60), ly = base.y + (Math.random()*24-12);
+      const h0 = performance.now(), HOP = 900;
+      function hop(now){
+        if(!state.fairies.includes(live)){ abort(); return; }
+        if(arrivalSkip){ cutShort(); return; }
+        const p = Math.min(1, (now-h0)/HOP);
+        setFairy(sx + (lx-sx)*p, sy + (ly-sy)*p - Math.sin(p*Math.PI)*70);
+        followCameraTo(live.x, live.y);
+        if(p < 1) requestAnimationFrame(hop); else land();
+      }
+      requestAnimationFrame(hop);
+    }
+    function land(){
+      live.arriving = false; live.busy = false;
+      live.targetX = live.x; live.targetY = live.y;
+      live.wanderAt = performance.now() + 1500;
+      back.style.transition = front.style.transition = "opacity .8s ease";
+      back.style.opacity = front.style.opacity = "0";
+      setTimeout(()=>{ back.remove(); front.remove(); }, 900);
+      resolve();
+    }
+    requestAnimationFrame(sail);
+  });
+}
+let boatChain = Promise.resolve();
+function enqueueBoatArrival(rec, onSpawn){
+  arrivalPending++;
+  if(!arrivalSkip) arrivalSkipBtn.classList.add("show");
+  boatChain = boatChain
+    .then(()=> runBoatArrival(rec, onSpawn))
+    .catch(err => console.error(err))
+    .then(()=>{
+      arrivalPending--;
+      if(arrivalPending === 0) finishArrivalBatch(); // 全員の到着が終わったら、暗転して場所をばらけさせる
+    });
+}
+
+// NOTE: this used to filter for just special1/2/3, which meant every
+// other entry in START_FAIRIES (including the 5 remedy fairies redesigned
+// today) was defined but never actually spawned — a pre-existing bug,
+// not something today's redesign broke. START_FAIRIES has been trimmed
+// down to exactly what should always be on the island (see its own
+// comment), so it's used directly now instead of being filtered.
+const ALWAYS_ON_FAIRIES = START_FAIRIES;
+// how many GACHA-earned fairies (not counting the 8 fixed special/remedy
+// ones, which are unaffected) can be on the island's DOM at once. Past
+// this, a fairy is still fully owned and safe in localStorage — it's just
+// not drawn until called forth from the fairy album. See the album's own
+// comment for the trade-off this is solving.
+const DISPLAY_CAP = 30;
+const youseiInitialState = loadYouseiSharedState();
+// youseiNextUid (declared further below, used by makeFairyRecord) used to
+// always restart at 1 every page load, with nothing syncing it against ids
+// already sitting in storage — a fresh session could then hand out "y1"
+// again even though a stored fairy already owned that id. Catching it up
+// to one past the highest existing id here fixes that.
+(function syncYouseiNextUid(st){
+  let maxId = 0;
+  st.fairies.forEach(f=>{
+    const m = /^y(\d+)$/.exec(f.id);
+    if(m) maxId = Math.max(maxId, parseInt(m[1], 10));
+  });
+  youseiNextUid = maxId + 1;
+})(youseiInitialState);
+(function reconcileDisplayCap(st){
+  // migrates older saves that predate the "hidden" flag: everything was
+  // effectively displayed before, so keep the first DISPLAY_CAP (by
+  // acquisition order, which is also array order) shown and hide the rest,
+  // then persist that decision so it doesn't get redecided every load
+  let changed = false;
+  let shown = 0;
+  st.fairies.forEach(f=>{
+    if(typeof f.hidden !== "boolean"){ f.hidden = false; changed = true; }
+    if(!f.hidden) shown++;
+  });
+  if(shown > DISPLAY_CAP){
+    let toHide = shown - DISPLAY_CAP;
+    for(let i=st.fairies.length-1; i>=0 && toHide>0; i--){
+      if(!st.fairies[i].hidden){ st.fairies[i].hidden = true; toHide--; changed = true; }
+    }
+  }
+  if(changed) saveYouseiSharedState(st);
+})(youseiInitialState);
+/* ---- 妖精の位置の記憶 ----
+   ドラッグで動かした位置や、ページを閉じる・切り替える直前の位置を保存しておき、
+   次に開いたとき、保存したその位置からそのまま始める。 */
+const FAIRY_POS_KEY = `kusuri_yousei_pos_v1_person_${YOUSEI_PERSON}`;
+function loadFairyPosMap(){
+  try{ return JSON.parse(localStorage.getItem(FAIRY_POS_KEY) || "{}") || {}; }catch(err){ return {}; }
+}
+function saveFairyPosMap(){
+  try{
+    const m = {};
+    state.fairies.forEach(f => {
+      if(f.id && !f.arriving) m[f.id] = {x: Math.round(f.x), y: Math.round(f.y)};
+    });
+    localStorage.setItem(FAIRY_POS_KEY, JSON.stringify(m));
+  }catch(err){}
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "hidden") saveFairyPosMap(); });
+window.addEventListener("pagehide", saveFairyPosMap);
+
+// これまでの版では、降り立った場所（大きな花のそば）をそのまま保存していたため、
+// その位置に固まっている妖精を、読み込み時に一度だけ島のあちこちへ散らして保存し直す。
+(function scatterFairiesStuckAtLanding(st){
+  const FLAG = `kusuri_yousei_scatter_done_v1_person_${YOUSEI_PERSON}`;
+  try{ if(localStorage.getItem(FLAG)) return; localStorage.setItem(FLAG, "1"); }catch(err){}
+  const lb = landingBase();
+  let changed = false;
+  st.fairies.forEach(f => {
+    if(Math.abs(f.x - lb.x) < 90 && Math.abs(f.y - lb.y) < 40){
+      const p = pickScatterPoint();
+      f.x = p.x; f.y = p.y; changed = true;
+    }
+  });
+  if(changed) saveYouseiSharedState(st);
+})(youseiInitialState);
+const savedFairyPos = loadFairyPosMap();
+function withSavedPosition(f){
+  const m = savedFairyPos[f.id];
+  if(!m || typeof m.x !== "number" || typeof m.y !== "number") return f;
+  return {...f, x:m.x, y:m.y};
+}
+ALWAYS_ON_FAIRIES.concat(youseiInitialState.fairies.filter(f => !f.hidden)).forEach(f => spawnFairyDom(withSavedPosition(f)));
+
+/* ============================================================
+   6b. 記録ごほうびガチャ／確定入手の全画面演出
+   ============================================================ */
+function buildYouseiRevealQueue(st){
+  // 記録1件＝予約1件＝妖精1体。種類は受け取る直前（showNext）に決める
+  const queue = [];
+  st.pendingGuaranteed.forEach(key => {
+    if(GROUP_REWARDS[key]) queue.push({kind:"guaranteed", token:key, type:null});
+    else queue.push({kind:"guaranteed", baseType:key, type:null});
+  });
+  return queue;
+}
+
+function runYouseiRevealSequence(){
+  const st = loadYouseiSharedState();
+  const queue = buildYouseiRevealQueue(st);
+  if(queue.length === 0) return;
+
+  const overlay = document.getElementById("youseiGetOverlay");
+  const stage = document.getElementById("youseiGetStage");
+  const nameEl = document.getElementById("youseiGetName");
+  const descEl = document.getElementById("youseiGetDesc");
+  const kindEl = document.getElementById("youseiGetKind");
+  const nextBtn = document.getElementById("youseiGetNextBtn");
+  const countEl = document.getElementById("youseiGetCount");
+
+  overlay.classList.add("show");
+  let idx = 0;
+  const arrivals = []; // fairies drawn this session that fit under the cap — they sail in by boat once the overlay closes
+  const storedNoteEl = document.getElementById("youseiGetStoredNote");
+  // running count of currently-displayed (non-hidden) gacha fairies, kept
+  // up to date as this loop hands out new ones, so a big multi-draw
+  // correctly starts hiding partway through instead of only checking once
+  let displayedCount = st.fairies.filter(f => !f.hidden).length;
+
+  function showNext(){
+    if(idx >= queue.length){
+      overlay.classList.remove("show");
+      arrivals.forEach(r => enqueueBoatArrival(r));
+      arrivals.length = 0;
+      return;
+    }
+    const item = queue[idx];
+    if(item.token) item.type = pickGroupRewardType(item.token, st.fairies);
+    else item.type = pickSpecificLookType(item.baseType, st.fairies);
+    const pos = (item.kind === "guaranteed" && SPECIALTY_START_POS[item.baseType || item.type])
+      ? SPECIALTY_START_POS[item.baseType || item.type]
+      : randomIslandPoint();
+    const rec = makeFairyRecord(item.type, pos);
+    // over the DISPLAY_CAP already? keep this one safely in the fairy
+    // album instead of adding yet another fairy to an already-busy island —
+    // still fully owned, just not drawn until called forth from there
+    const overCap = displayedCount >= DISPLAY_CAP;
+    rec.hidden = overCap;
+    if(!overCap) displayedCount++;
+
+    st.fairies.push(rec);
+    if(item.kind === "guaranteed"){
+      const gi = st.pendingGuaranteed.indexOf(item.token || item.baseType);
+      if(gi !== -1) st.pendingGuaranteed.splice(gi, 1);
+    } else {
+      st.pendingDraws = Math.max(0, st.pendingDraws - 1);
+    }
+    saveYouseiSharedState(st); // 途中で閉じても取りこぼさないよう毎回保存
+    if(!overCap) arrivals.push(rec); // (shown on the island later, by boat — see enqueueBoatArrival)
+
+    const def = FAIRY_TYPES[item.type];
+    stage.innerHTML = "";
+    const built = buildFairy(rec);
+    built.g.removeAttribute("filter");
+    built.g.setAttribute("transform", "translate(90,120) scale(1.7)");
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", "0 0 180 210");
+    svg.appendChild(built.g);
+    stage.appendChild(svg);
+
+    nameEl.textContent = def.name;
+    descEl.textContent = def.desc;
+    kindEl.textContent = item.kind === "guaranteed" ? "おくすりごほうび・かくてい入手！" : "きろくのごほうび・なかまがふえた！";
+    countEl.textContent = `${idx + 1} / ${queue.length}`;
+    storedNoteEl.classList.toggle("show", overCap);
+
+    idx++;
+  }
+
+  nextBtn.onclick = showNext;
+  showNext();
+}
+setTimeout(runYouseiRevealSequence, 400);
+
+/* ============================================================
+   7. ANIMATION LOOP
+   ============================================================ */
+// Three different update rates, chosen per how often each thing actually
+// happens and how much it matters that it looks smooth:
+//  - a fairy traveling to a happening: rare, short-lived, and very visible
+//    (it's the thing your eye follows) → full 60fps, every frame.
+//  - idle/wandering fairies (the common case, most fairies most of the
+//    time): slow, gentle drifting → 20fps is plenty and cuts that DOM/string
+//    work to roughly a third.
+//  - viruses (slow background drift): 30fps, a middle ground.
+// All movement math below is scaled by elapsed time (dt), so fairies/
+// viruses move at the same real-world speed no matter which rate applies.
+const FAIRY_WANDER_FPS = 20;
+const FAIRY_WANDER_INTERVAL_MS = 1000 / FAIRY_WANDER_FPS;
+const VIRUS_FPS = 30;
+const VIRUS_INTERVAL_MS = 1000 / VIRUS_FPS;
+const REF_FRAME_MS = 1000/60; // the original 0.07 / 0.012 lerp factors were tuned around ~60fps frames
+
+// shared per-fairy limb/blink animation — called every frame for a fairy
+// that's traveling to a happening (dt ≈ one frame), or once per wander
+// tick for an idle one (dt ≈ 50ms) — the caller decides how often.
+function animateFairyLimbs(f, dt, now){
+  const species = FAIRY_TYPES[f.type].species;
+  const {bodyWrap, legL, legR, headWrap, eyeL, eyeR, wingL, wingR, legLBase, legRBase, headBaseX, headBaseY} = f.refs;
+  f.phase += dt*0.006;
+
+  if(f.walking){
+    f.legsWalking = true;
+    const swing = Math.sin(f.phase*6) * 22;
+    legL.setAttribute("transform", `${legLBase} rotate(${swing.toFixed(1)})`);
+    legR.setAttribute("transform", `${legRBase} rotate(${(-swing).toFixed(1)})`);
+    // bees fly, so their "walking" bob is really a flight bob — much more
+    // pronounced than a ground animal's little walking bounce
+    const bobAmp = species === "bee" ? 8 : 3;
+    const bob = Math.abs(Math.sin(f.phase*6)) * bobAmp;
+    // penguins rock side to side as they waddle — everyone else stays upright
+    const waddle = species === "penguin" ? Math.sin(f.phase*6) * 9 : 0;
+    bodyWrap.setAttribute("transform", `translate(0,${-bob.toFixed(1)}) rotate(${waddle.toFixed(1)})`);
+    const headBob = Math.sin(f.phase*6 + 0.3) * 2;
+    headWrap.setAttribute("transform", `translate(${headBaseX},${(headBaseY+headBob).toFixed(1)})`);
+    if(wingL){
+      // a bee's wings flap far faster than a bird's or a penguin's flippers
+      const flapSpeed = species === "bee" ? 26 : 10;
+      const flap = 18 + Math.sin(f.phase*flapSpeed)*10;
+      wingL.setAttribute("transform", `translate(-15,-2) rotate(${-flap})`);
+      wingR.setAttribute("transform", `translate(15,-2) rotate(${flap})`);
+    }
+  } else {
+    if(f.legsWalking){ // 歩き終わった最初の1回だけ脚を戻す（毎回同じ値を書き込まない）
+      legL.setAttribute("transform", legLBase);
+      legR.setAttribute("transform", legRBase);
+      f.legsWalking = false;
+    }
+    const breathe = Math.sin(f.phase*1.6) * 1.4;
+    // bees keep a gentle hover-bob even at rest instead of standing still
+    const idleBobAmp = species === "bee" ? 2.2 : 0.3;
+    bodyWrap.setAttribute("transform", `translate(0,${(-Math.abs(breathe)*idleBobAmp).toFixed(2)}) scale(1, ${1+breathe*0.01})`);
+    const idleHead = Math.sin(f.phase*1.3) * 1.2;
+    headWrap.setAttribute("transform", `translate(${headBaseX},${(headBaseY+idleHead).toFixed(1)})`);
+    if(wingL){
+      const idleFlapSpeed = species === "bee" ? 9 : 1.4;
+      const idleFlapAmp = species === "bee" ? 14 : 4;
+      const idleFlap = Math.sin(f.phase*idleFlapSpeed) * idleFlapAmp;
+      wingL.setAttribute("transform", `translate(-15,-2) rotate(${idleFlap})`);
+      wingR.setAttribute("transform", `translate(15,-2) rotate(${-idleFlap})`);
+    }
+  }
+
+  if(now > f.blinkAt){
+    // reset to each fairy's own configured eye size, not a hardcoded
+    // default — some species (penguin, mantis) draw bigger eyes on
+    // purpose, and this used to snap them back to the generic 3.4 the
+    // moment they blinked
+    const openRy = f.refs.eyeOpenRy || 3.4;
+    eyeL.setAttribute("ry", "0.4"); eyeR.setAttribute("ry", "0.4");
+    setTimeout(()=>{ eyeL.setAttribute("ry", openRy); eyeR.setAttribute("ry", openRy); }, 90);
+    f.blinkAt = now + 2000 + Math.random()*3500;
+  }
+}
+
+let wanderTickN = 0;
+// 画面外（とごく小さく映っているとき）の妖精は、見えないので描画の更新を省く。
+// 妖精が増えても「見えている分」だけ DOM を触るようにするための判定。
+let _viewW = 0, _viewH = 0;
+function getViewCull(){
+  const wrap = document.getElementById("stage-wrap");
+  _viewW = wrap.clientWidth; _viewH = wrap.clientHeight;
+  const sc = baseScale*camScale;
+  const cx = 900 + SCENE_W/2, cy = 250 + SCENE_H/2;
+  const m = 90*sc + 30;
+  return {
+    tiny: sc < 0.14,
+    on(x,y){
+      return Math.abs(sc*(x-cx)+camPanX) < _viewW/2 + m && Math.abs(sc*(y-cy)+camPanY) < _viewH/2 + m;
+    }
+  };
+}
+let lastFrameT = performance.now();
+let lastWanderT = performance.now();
+let lastVirusT = performance.now();
+// guards against ever having two RAF chains running at once — several
+// places (initial startup, visibilitychange, exitNightMode, and the
+// startup night-resume check) may all want to (re)start the loop, and
+// calling requestAnimationFrame(tick) from more than one of them around
+// the same moment would silently double the update rate forever after.
+let tickScheduled = false;
+function scheduleTick(){
+  if(tickScheduled) return;
+  tickScheduled = true;
+  requestAnimationFrame(tick);
+}
+function tick(now){
+  tickScheduled = false; // this pending frame has now happened; anything below that wants another one must call scheduleTick() again
+  // fully stop the RAF chain while the tab/app is backgrounded, instead of
+  // just skipping work — on mobile this is the single biggest saver, since
+  // a health app like this is very often left open in the background.
+  if(document.hidden) return;
+  // ...and likewise while the island is "asleep" for its night-mode break —
+  // exitNightMode() restarts this loop with fresh timestamps when it ends.
+  if(state.night) return;
+
+  const frameDt = Math.min(120, now-lastFrameT); lastFrameT = now;
+  const doWander = (now - lastWanderT) >= FAIRY_WANDER_INTERVAL_MS;
+  const wanderDt = doWander ? Math.min(200, now-lastWanderT) : 0;
+  if(doWander){ lastWanderT = now; wanderTickN++; }
+  const doVirus = (now - lastVirusT) >= VIRUS_INTERVAL_MS;
+  const virusDt = doVirus ? Math.min(150, now-lastVirusT) : 0;
+  if(doVirus) lastVirusT = now;
+
+  // frame-rate-independent movement: same "fraction of the remaining
+  // distance covered per second" as the original 60fps-tuned constants,
+  // just applied in fewer/larger (wander, virus) or the same (busy) steps.
+  const fairyMoveBusy = Math.min(1, 0.07 * (frameDt/REF_FRAME_MS));
+  const fairyMoveWander = Math.min(1, 0.07 * (wanderDt/REF_FRAME_MS));
+  const virusMove = Math.min(1, 0.012 * (virusDt/REF_FRAME_MS));
+
+  const cull = doWander ? getViewCull() : null;
+  state.fairies.forEach((f, fi)=>{
+    if(f.arriving) return; // still riding the arrival boat — runBoatArrival positions it itself
+    if(f.busy){
+      // dispatched to a happening: every frame, for a smooth, easy-to-follow run
+      f.lastPos = null; // 他の経路でDOMを書き換えるので、位置キャッシュを無効化
+      if(!f.dragging){
+        const dx = f.targetX - f.x, dy = f.targetY - f.y;
+        const dist = Math.hypot(dx,dy);
+        f.walking = dist > 3;
+        if(f.walking){ f.x += dx*fairyMoveBusy; f.y += dy*fairyMoveBusy; }
+        f.dom.setAttribute("transform", `translate(${f.x.toFixed(1)},${f.y.toFixed(1)})`);
+      }
+      animateFairyLimbs(f, frameDt, now);
+    } else {
+      if(!doWander) return; // idle fairies only get touched at the slower wander rate
+      if(!f.dragging){
+        if(now > f.wanderAt){
+          for(let tries=0; tries<5; tries++){
+            const ang = Math.random()*Math.PI*2;
+            const dist = 35 + Math.random()*55;
+            const nx = f.x + Math.cos(ang)*dist;
+            const ny = f.y + Math.sin(ang)*dist*0.6;
+            if(insideIsland(nx,ny) && !pathBlocked(f.x,f.y,nx,ny)){
+              f.targetX = nx; f.targetY = ny;
+              break;
+            }
+          }
+          f.wanderAt = now + 4000 + Math.random()*5000;
+        }
+        const dx = f.targetX - f.x, dy = f.targetY - f.y;
+        const dist = Math.hypot(dx,dy);
+        f.walking = dist > 3;
+        if(f.walking){
+          f.x += dx*fairyMoveWander;
+          f.y += dy*fairyMoveWander;
+        }
+        // 位置が変わったときだけ、かつ画面に見えているときだけ DOM を更新
+        // （見えない間に動いた分は、画面に戻った最初の tick でまとめて反映される）
+        if(cull.on(f.x, f.y)){
+          const pos = `translate(${f.x.toFixed(1)},${f.y.toFixed(1)})`;
+          if(f.lastPos !== pos){ f.dom.setAttribute("transform", pos); f.lastPos = pos; }
+        }
+      }
+      // 画面外・極小表示の妖精は動きの描画を省略。立ち止まっている妖精の呼吸・
+      // まばたきは約10fpsで十分なので、妖精ごとに交互のtickで更新して負荷も分散。
+      f.idleDt = (f.idleDt||0) + wanderDt;
+      if(!cull.tiny && cull.on(f.x, f.y) && (f.walking || ((wanderTickN + fi) & 1))){
+        animateFairyLimbs(f, f.idleDt, now); f.idleDt = 0;
+      } else if(f.idleDt > 1000){ f.idleDt = 1000; }
+    }
+  });
+
+  // once a dispatched fairy reaches its happening, start the ~3s "shrinking it down" phase.
+  // virus happenings track a moving target, so keep their coordinates (and
+  // whichever fairy is chasing one) synced to the virus's live position first.
+  // (cheap — state.activeHappenings is always a small list — so this runs every frame.)
+  state.activeHappenings.forEach(h=>{
+    if(h.targetVirus){
+      h.x = h.targetVirus.x; h.y = h.targetVirus.y;
+      if(h.phase === "traveling" && h.respondingFairy){
+        h.respondingFairy.targetX = h.x;
+        h.respondingFairy.targetY = h.y;
+      }
+    }
+    if(h.phase === "traveling" && h.respondingFairy){
+      const f = h.respondingFairy;
+      if(Math.hypot(f.x-h.x, f.y-h.y) < 40) beginShrink(h);
+    }
+  });
+
+  // viruses drift slowly around the whole body, forever, on their own —
+  // each one is always its own tappable happening (see spawnVirus)
+  if(doVirus){
+    state.viruses.forEach(v=>{
+      v.phase += virusDt*0.003;
+      if(now > v.wanderAt){
+        const ang = Math.random()*Math.PI*2;
+        const dist = 60 + Math.random()*90;
+        const nx = v.x + Math.cos(ang)*dist;
+        const ny = v.y + Math.sin(ang)*dist;
+        if(insideIsland(nx,ny)){ v.targetX = nx; v.targetY = ny; }
+        v.wanderAt = now + 5000 + Math.random()*6000; // slow, lazy direction changes
+      }
+      const dx = v.targetX - v.x, dy = v.targetY - v.y;
+      if(Math.hypot(dx,dy) > 2){
+        v.x += dx*virusMove;
+        v.y += dy*virusMove;
+      }
+      const wobble = Math.sin(v.phase*2.4) * 6;
+      v.dom.setAttribute("transform", `translate(${v.x.toFixed(1)},${v.y.toFixed(1)}) rotate(${wobble.toFixed(1)})`);
+    });
+  }
+
+  scheduleTick();
+}
+// pick up a night that was already counting down before this page load
+// (see resumeNightModeIfNeeded's own comment), then start the loop.
+resumeNightModeIfNeeded();
+scheduleTick();
+// resume the loop (and avoid one giant dt jump) when the tab/app comes
+// back to the foreground, since tick() above returns immediately while hidden
+document.addEventListener("visibilitychange", ()=>{
+  if(!document.hidden){
+    lastFrameT = performance.now();
+    lastWanderT = lastFrameT;
+    lastVirusT = lastFrameT;
+    scheduleTick();
+  }
+});
+
+/* ============================================================
+   8. INTERACTION — hint helper
+   ============================================================ */
+const hint = document.getElementById("hintText");
+
+function showHint(text){
+  hint.textContent = text;
+  hint.classList.add("show");
+  clearTimeout(showHint._t);
+  showHint._t = setTimeout(()=>hint.classList.remove("show"), 1800);
+}
+/* 画面上の位置（clientX/Y）→ 島の座標。
+   DOMの図形情報（getScreenCTM / getBoundingClientRect）には頼らず、アプリ自身が持っている
+   カメラの状態（拡大率 baseScale*camScale と移動量 camPanX/Y）から計算する。
+   iPhone(Safari/WebKit)では、CSS transform で拡大縮小している <svg> に対して
+   getScreenCTM() は親のtransformを無視し、getBoundingClientRect() も
+   overflow:visible の内容を含んだ大きさを返すことがあり、ズームするほど座標がずれて
+   妖精を動かせない・ものを置けない原因になっていた。
+   カメラの配置は followCameraTo() と同じ式：
+   島の中心 (900+SCENE_W/2, 250+SCENE_H/2) が、表示エリアの中心 + (camPanX, camPanY) に来る。 */
+function svgPoint(evt){
+  const wr = document.getElementById("stage-wrap").getBoundingClientRect(); // 変形していない固定の枠
+  const s = baseScale * camScale;
+  return {
+    x: (900 + SCENE_W/2) + (evt.clientX - (wr.left + wr.width/2)  - camPanX) / s,
+    y: (250 + SCENE_H/2) + (evt.clientY - (wr.top  + wr.height/2) - camPanY) / s
+  };
+}
+
+/* ---- fairy: selected only while actively dragging; drop = move ---- */
+let infoPanelFairy = null; // whichever fairy #info-panel is currently showing, if any — used by the "さようなら" button
+// removes the DOM/live-state side of a fairy — shared by removeFairy
+// (says goodbye forever) and putAwayFairy (keeps it, just off-island)
+function detachFairyFromIsland(f){
+  f.dom.remove();
+  const idx = state.fairies.indexOf(f);
+  if(idx !== -1) state.fairies.splice(idx, 1);
+  // if this fairy was mid-dispatch to fix something, free that happening
+  // back up (a tap will send a different fairy) instead of leaving it
+  // stuck forever waiting on a fairy that's no longer on the island
+  state.activeHappenings.forEach(h=>{
+    if(h.respondingFairy === f){
+      h.respondingFairy = null;
+      h.phase = "idle";
+    }
+  });
+}
+// sends a fairy back into the fairy album (see DISPLAY_CAP) — unlike
+// removeFairy, the record itself is kept, just flagged hidden, so it can
+// be called forth again later exactly as it was
+function putAwayFairy(f){
+  detachFairyFromIsland(f);
+  if(f.id && f.id.startsWith("y")){
+    const st = loadYouseiSharedState();
+    const rec = st.fairies.find(r => r.id === f.id);
+    if(rec){ rec.hidden = true; saveYouseiSharedState(st); }
+  }
+  renderFairyAlbum();
+}
+// brings one fairy of `type` out of the album and onto the island, by
+// boat, exactly like a freshly-drawn gacha fairy would arrive
+function callForthFairy(type){
+  const st = loadYouseiSharedState();
+  const shownNow = st.fairies.filter(f => !f.hidden).length;
+  if(shownNow >= DISPLAY_CAP){
+    showHint(`まず島の誰かをしまってね（今 ${shownNow}/${DISPLAY_CAP}）`);
+    return;
+  }
+  const rec = st.fairies.find(f => f.type === type && f.hidden);
+  if(!rec) return;
+  rec.hidden = false;
+  saveYouseiSharedState(st);
+  enqueueBoatArrival(rec);
+  renderFairyAlbum();
+}
+// a small standalone render of one fairy type, for the album list — same
+// technique the gacha reveal card already uses (build the real character
+// via buildFairy, drop it in its own little <svg>), just serialized to a
+// string via outerHTML so it can sit in the innerHTML template below
+// alongside everything else, instead of a plain colour swatch.
+function miniFairySvg(type){
+  const built = buildFairy({id:"preview_"+type, type});
+  built.g.removeAttribute("filter");
+  built.g.setAttribute("transform", "translate(90,128) scale(1.3)");
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", "0 0 180 200");
+  svg.setAttribute("class", "album-icon-svg");
+  svg.appendChild(built.g);
+  return svg.outerHTML;
+}
+function renderFairyAlbum(){
+  const st = loadYouseiSharedState();
+  const listEl = document.getElementById("fairyAlbumList");
+  const countEl = document.getElementById("fairyAlbumCount");
+  const shown = st.fairies.filter(f => !f.hidden).length;
+  countEl.textContent = `今、島にいる妖精：${shown} / ${DISPLAY_CAP}`;
+  const groups = {}; // type -> {shown, stored}
+  st.fairies.forEach(f=>{
+    if(!groups[f.type]) groups[f.type] = {shown:0, stored:0};
+    groups[f.type][f.hidden ? "stored" : "shown"]++;
+  });
+  const types = Object.keys(groups).sort((a,b)=> FAIRY_TYPES[a].name.localeCompare(FAIRY_TYPES[b].name, "ja"));
+  if(types.length === 0){
+    listEl.innerHTML = `<p class="album-empty">まだ妖精を1体も持っていないみたい。おくすりをきろくして集めよう！</p>`;
+    return;
+  }
+  listEl.innerHTML = types.map(type=>{
+    const t = FAIRY_TYPES[type];
+    const g = groups[type];
+    return `<div class="album-row">
+      <div class="album-icon">${miniFairySvg(type)}</div>
+      <div class="album-info">
+        <div class="album-name">${t.name}</div>
+        <div class="album-count">島に ${g.shown} 体・ずかんに ${g.stored} 体</div>
+      </div>
+      <button class="album-btn" data-action="call" data-type="${type}" ${g.stored===0?"disabled":""}>呼ぶ</button>
+      <button class="album-btn" data-action="store" data-type="${type}" ${g.shown===0?"disabled":""}>しまう</button>
+    </div>`;
+  }).join("");
+}
+document.getElementById("fairyAlbumList").addEventListener("click", (e)=>{
+  const btn = e.target.closest(".album-btn");
+  if(!btn || btn.disabled) return;
+  const type = btn.dataset.type;
+  if(btn.dataset.action === "call"){
+    callForthFairy(type);
+  } else {
+    const live = state.fairies.find(f => f.type === type && f.id && f.id.startsWith("y") && !f.arriving);
+    if(!live){ showHint("ちょうど船に乗って移動中みたい。少し待ってね"); return; }
+    putAwayFairy(live);
+    showHint(`${FAIRY_TYPES[type].name}をずかんにしまったよ`);
+  }
+});
+document.getElementById("fairyAlbumBtn").addEventListener("click", ()=>{
+  renderFairyAlbum();
+  document.getElementById("fairyAlbumModal").classList.add("show");
+  menuDropdown.classList.remove("show");
+});
+document.getElementById("fairyAlbumClose").addEventListener("click", ()=>{
+  document.getElementById("fairyAlbumModal").classList.remove("show");
+});
+document.getElementById("fairyAlbumModal").addEventListener("click", (e)=>{
+  if(e.target.id === "fairyAlbumModal") document.getElementById("fairyAlbumModal").classList.remove("show");
+});
+function wireFairyInteraction(f){
+  /* ドラッグ中の動きは、妖精の要素ではなく document 全体で受け取る。
+     iPhone(Safari)では setPointerCapture が SVG 要素で効かないことがあり、
+     ズームして妖精が小さく映っているときは、少し動かしただけで指が妖精の上から外れて
+     動きが届かなくなる（かろうじてしか動かない）原因になっていた。
+     document で受ければ、指がどこに移っても、同じ指(pointerId)の動きを最後まで追える。 */
+  const onMove = (e)=>{
+    if(!f.dragging || e.pointerId !== f.dragPointerId) return;
+    const p = svgPoint(e);
+    if(Math.hypot(p.x-f.downX, p.y-f.downY) > 5) f.moved = true;
+    if(!insideIsland(p.x,p.y)) return;
+    f.x = p.x; f.y = p.y;
+    f.targetX = p.x; f.targetY = p.y;
+    f.dom.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+    f.lastPos = null;
+  };
+  const release = (e)=>{
+    if(e.pointerId !== f.dragPointerId) return; // 別の指（ピンチの2本目など）の離しでは終わらない
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", release);
+    document.removeEventListener("pointercancel", release);
+    if(!f.dragging) return; // ピンチなどで、すでに取り消されている
+    try{ f.dom.releasePointerCapture(e.pointerId); }catch(err){}
+    f.dragging = false;
+    f.dom.classList.remove("dragging","selected");
+    f.targetX = f.x; f.targetY = f.y;
+    f.wanderAt = performance.now() + 4000 + Math.random()*4000;
+    if(f.moved) saveFairyPosMap(); // 動かした位置を覚えておく
+    if(!f.moved){
+      const t = FAIRY_TYPES[f.type];
+      infoPanelFairy = f;
+      document.getElementById("infoName").textContent = t.name;
+      document.getElementById("infoDesc").textContent = t.desc;
+      // the "put away" button only makes sense for fairies that pile up
+      // over time (earned through medication records) — the small fixed
+      // cast (special/remedy fairies) always stays on the island, so this
+      // stays off for those (see DISPLAY_CAP's own comment on why)
+      document.getElementById("infoFairyStoreBtn").classList.toggle("show", !!(f.id && f.id.startsWith("y")));
+      document.getElementById("info-panel").classList.add("show");
+    }
+  };
+  f.dom.addEventListener("pointerdown", (e)=>{
+    if(state.placingType || f.arriving) return;
+    e.stopPropagation();
+    f.dragging = true;
+    f.moved = false;
+    f.dragPointerId = e.pointerId;
+    const p = svgPoint(e);
+    f.downX = p.x; f.downY = p.y;
+    f.dom.classList.add("dragging","selected");
+    try{ f.dom.setPointerCapture(e.pointerId); }catch(err){}
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", release);
+  });
+}
+
+document.getElementById("infoClose").addEventListener("click", ()=>{
+  document.getElementById("info-panel").classList.remove("show");
+  infoPanelFairy = null;
+});
+document.getElementById("infoFairyStoreBtn").addEventListener("click", ()=>{
+  if(!infoPanelFairy) return;
+  const t = FAIRY_TYPES[infoPanelFairy.type];
+  putAwayFairy(infoPanelFairy); // reversible — call it back any time from the fairy album
+  infoPanelFairy = null;
+  document.getElementById("info-panel").classList.remove("show");
+  showHint(`${t.name}をずかんにしまったよ`);
+});
+
+/* ---- placement: drag on island to size & drop;
+   eraser mode taps to remove; move mode drags them elsewhere; empty
+   drag pans the view ---- */
+let placeDrag = null;
+let panState = null;
+let pathDraft = null;
+let moveDrag = null;
+const DEFAULT_SCALE = { tree:2, flower:2, grass:2, house:2, fence:2, fenceV:2 };
+const PLACEMENT_MAX_SCALE = { hotspring:10, tree:6.4, flower:6.4, grass:6.4, house:6.4, fence:6.4, fenceV:6.4 }; // hotspring needs to cover ~1/3 of the head; the rest doubled per request
+
+/* ---- two-finger pinch-to-zoom (tablets/touchscreens) ----
+   The single-finger pan below already works via Pointer Events, which
+   unify mouse and touch, but each finger of a pinch gesture fires its own
+   independent pointerdown/move/up — there's no built-in "pinch" event —
+   so a second touch needs to be detected and handled separately here,
+   taking over from (and cancelling) whatever the first finger started. */
+const activeTouches = new Map(); // pointerId -> {x, y} in client coordinates, touch pointers only
+let pinchState = null; // {pointerIds:[a,b], startDist, startScale, startPanX, startPanY, startMidClientX, startMidClientY}
+
+function touchPoints(ids){
+  return ids.map(id => activeTouches.get(id));
+}
+function cancelOtherGestures(e){
+  // a second finger just landed — whatever the first finger was doing
+  // (panning, placing, moving an object, drawing a path) is no longer
+  // what the person wants, so stop it cleanly before starting the pinch
+  if(panState) endPan(e);
+  if(moveDrag) moveDrag = null;
+  if(placeDrag){ placeDrag.ghost.remove(); placeDrag = null; }
+  if(pathDraft){ pathDraft.dom.remove(); pathDraft = null; }
+}
+
+/* 2本指ズームの開始。
+   指が妖精やオブジェクトの上に乗っていても反応するよう、タッチの記録とピンチの開始は
+   「キャプチャ段階」（対象要素のハンドラより先）で行う。妖精のpointerdownは
+   stopPropagation() するので、バブリング段階だと、妖精に触れた指が記録されず、
+   2本目の指を置いてもズームできなかった。 */
+function startPinch(e){
+  cancelOtherGestures(e);
+  // 1本目の指で始まっていた妖精のドラッグは取り消す（ズームの邪魔をしない）
+  state.fairies.forEach(f => {
+    if(f.dragging){
+      f.dragging = false; f.moved = false;
+      f.dom.classList.remove("dragging","selected");
+      f.targetX = f.x; f.targetY = f.y;
+    }
+  });
+  const ids = [...activeTouches.keys()];
+  const [a,b] = touchPoints(ids);
+  pinchState = {
+    pointerIds: ids,
+    startDist: Math.hypot(a.x-b.x, a.y-b.y) || 1,
+    startScale: camScale,
+    startPanX: camPanX,
+    startPanY: camPanY,
+    startMidClientX: (a.x+b.x)/2,
+    startMidClientY: (a.y+b.y)/2
+  };
+}
+scene.addEventListener("pointerdown", (e)=>{
+  if(e.pointerType !== "touch") return;
+  activeTouches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activeTouches.size === 2 && !pinchState){
+    startPinch(e);
+    e.stopPropagation(); // 2本目の指は、タップ/ドラッグとしては扱わない
+  } else if(activeTouches.size > 2){
+    e.stopPropagation(); // 3本目以降は無視
+  }
+}, true);
+
+scene.addEventListener("pointerdown", (e)=>{
+  if(e.pointerType === "touch"){
+    activeTouches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  }
+
+  if(e.target.closest(".fairy-group")) return;
+  const p = svgPoint(e);
+
+  if(state.placingType === "eraser"){
+    const pathEl = e.target.closest(".placed-path");
+    if(pathEl){
+      erasePath(pathEl);
+      deselectTool();
+      return;
+    }
+    const objEl = e.target.closest(".placed-obj");
+    if(objEl){
+      eraseObject(objEl);
+      deselectTool();
+    }
+    return;
+  }
+
+  if(state.placingType === "move"){
+    const objEl = e.target.closest(".placed-obj");
+    if(!objEl){ return; }
+    const rec = state.objects.find(o => o.dom === objEl);
+    if(!rec) return;
+    moveDrag = {rec, offX:p.x-rec.x, offY:p.y-rec.y, moved:false};
+    return;
+  }
+
+  if(state.placingType === "path"){
+    if(!insideIsland(p.x,p.y)){ showHint("島の中に描いてね"); return; }
+    pathDraft = {points:[[p.x,p.y]]};
+    const g = el("g", {class:"placed-path ghost-preview", opacity:"0.7"});
+    g.appendChild(el("path", {d:pointsToPathD(pathDraft.points), fill:"none", stroke:"#dfc38c", "stroke-width":26, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+    scene.appendChild(g);
+    pathDraft.dom = g;
+    return;
+  }
+
+  if(state.placingType){
+    if(!insideIsland(p.x,p.y)){ showHint("島の中に置いてね"); return; }
+    const ds = DEFAULT_SCALE[state.placingType] || 1;
+    const ghost = OBJECT_TYPES[state.placingType].build();
+    ghost.classList.add("ghost-preview");
+    ghost.setAttribute("opacity","0.55");
+    ghost.setAttribute("transform", `translate(${p.x},${p.y}) scale(${ds},${ds})`);
+    scene.appendChild(ghost);
+    placeDrag = {type:state.placingType, startX:p.x, startY:p.y, ghost, sx:ds, sy:ds};
+    return;
+  }
+
+  // nothing to place/erase -> drag pans the view
+  panState = {startClientX:e.clientX, startClientY:e.clientY, startPanX:camPanX, startPanY:camPanY};
+  cameraEl.classList.add("panning");
+  try{ scene.setPointerCapture(e.pointerId); }catch(err){}
+});
+scene.addEventListener("pointermove", (e)=>{
+  if(e.pointerType === "touch" && activeTouches.has(e.pointerId)){
+    activeTouches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  }
+  if(pinchState){
+    if(!pinchState.pointerIds.includes(e.pointerId)) return; // ignore a spectating third finger, if any
+    const [a,b] = touchPoints(pinchState.pointerIds);
+    if(!a || !b) return; // one of the two has already lifted — pointerup will close pinchState out shortly
+    const dist = Math.hypot(a.x-b.x, a.y-b.y);
+    const midClientX = (a.x+b.x)/2, midClientY = (a.y+b.y)/2;
+    // ピンチでは、+/-ボタンの範囲より広く、島全体が見える倍率(1)まで縮小できる
+    camScale = clamp(pinchState.startScale * (dist/pinchState.startDist), 1, ZOOM_MAX);
+    // 指の間にあった島の一点が、指の間に残り続けるようにズームする
+    // （画面の中心を基準に、パンの量を倍率の変化ぶんだけ補正する）
+    const wr = document.getElementById("stage-wrap").getBoundingClientRect();
+    const cx = wr.left + wr.width/2, cy = wr.top + wr.height/2;
+    const k = camScale / pinchState.startScale;
+    camPanX = (midClientX - cx) - k*(pinchState.startMidClientX - cx - pinchState.startPanX);
+    camPanY = (midClientY - cy) - k*(pinchState.startMidClientY - cy - pinchState.startPanY);
+    applyCameraTransform();
+    return;
+  }
+  if(moveDrag){
+    const p = svgPoint(e);
+    const nx = p.x - moveDrag.offX, ny = p.y - moveDrag.offY;
+    moveDrag.moved = true;
+    moveDrag.rec.dom.setAttribute("transform", `translate(${nx},${ny}) scale(${moveDrag.rec.sx},${moveDrag.rec.sy})`);
+    return;
+  }
+  if(pathDraft){
+    const p = svgPoint(e);
+    const last = pathDraft.points[pathDraft.points.length-1];
+    if(Math.hypot(p.x-last[0], p.y-last[1]) > 14){
+      pathDraft.points.push([p.x,p.y]);
+      pathDraft.dom.firstChild.setAttribute("d", pointsToPathD(pathDraft.points));
+    }
+    return;
+  }
+  if(placeDrag){
+    const p = svgPoint(e);
+    const dx = p.x - placeDrag.startX, dy = p.y - placeDrag.startY;
+    const defaultScale = DEFAULT_SCALE[placeDrag.type] || 1;
+    const maxScale = PLACEMENT_MAX_SCALE[placeDrag.type] || 3.2;
+    // the size at the moment of the initial tap (defaultScale) is now the
+    // floor — dragging can only make it bigger, never smaller/thinner
+    // than what you started with, per request
+    const sx = clamp(Math.abs(dx)/40, defaultScale, maxScale);
+    const sy = clamp(Math.abs(dy)/40, defaultScale, maxScale);
+    placeDrag.sx = sx; placeDrag.sy = sy;
+    placeDrag.ghost.setAttribute("transform", `translate(${placeDrag.startX},${placeDrag.startY}) scale(${sx},${sy})`);
+    return;
+  }
+  if(panState){
+    camPanX = panState.startPanX + (e.clientX - panState.startClientX);
+    camPanY = panState.startPanY + (e.clientY - panState.startClientY);
+    applyCameraTransform();
+  }
+});
+function finishPath(){
+  if(!pathDraft) return;
+  pathDraft.dom.remove();
+  if(pathDraft.points.length >= 2){
+    const rec = {id: state.nextPathId++, points: pathDraft.points};
+    state.paths.push(rec);
+    renderPathTrail(rec);
+    showHint("道を置いたよ");
+  }
+  pathDraft = null;
+  deselectTool();
+}
+function finishPlacement(){
+  if(!placeDrag) return;
+  const {type, startX, startY, sx, sy, ghost} = placeDrag;
+  ghost.remove();
+  placeObject(type, startX, startY, sx, sy);
+  showHint(OBJECT_TYPES[type].label + "を置いたよ");
+  placeDrag = null;
+  deselectTool();
+}
+function finishMove(){
+  if(!moveDrag) return;
+  const {rec, offX, offY, moved} = moveDrag;
+  if(moved){
+    // final position was already applied live in pointermove; just sync the record
+    const t = rec.dom.getAttribute("transform").match(/translate\(([\-\d.]+),([\-\d.]+)\)/);
+    if(t){ rec.x = +t[1]; rec.y = +t[2]; }
+    invalidateObstacleGrid();
+    reorderDecorLayer();
+    showHint("うごかしたよ");
+  }
+  moveDrag = null;
+  deselectTool();
+}
+function endPan(e){
+  if(!panState) return;
+  cameraEl.classList.remove("panning");
+  try{ scene.releasePointerCapture(e.pointerId); }catch(err){}
+  panState = null;
+}
+function releaseTouch(e){
+  if(e.pointerType !== "touch") return;
+  activeTouches.delete(e.pointerId);
+  if(pinchState && pinchState.pointerIds.includes(e.pointerId)){
+    pinchState = null;
+    // don't try to resume a single-finger pan from whichever finger (if
+    // any) is still down — its pointerdown already happened back when
+    // the pinch started, so there's no fresh drag-start reference point.
+    // The person just lifts and touches again to keep panning, which is
+    // the natural gesture anyway.
+  }
+}
+scene.addEventListener("pointerup", (e)=>{ finishMove(); finishPath(); finishPlacement(); endPan(e); releaseTouch(e); });
+scene.addEventListener("pointerleave", (e)=>{
+  if(pathDraft){ pathDraft.dom.remove(); pathDraft = null; }
+  if(placeDrag){ placeDrag.ghost.remove(); placeDrag = null; }
+  moveDrag = null;
+  releaseTouch(e);
+});
+scene.addEventListener("pointercancel", (e)=>{
+  if(pathDraft){ pathDraft.dom.remove(); pathDraft = null; }
+  if(placeDrag){ placeDrag.ghost.remove(); placeDrag = null; }
+  moveDrag = null;
+  endPan(e);
+  releaseTouch(e);
+});
+
+/* ============================================================
+   9. PALETTE (always visible at the bottom)
+   One tap selects a tool, one placement/erase uses it up, then the
+   app returns to normal map-pan mode automatically — so navigating
+   the map and editing the island never fight over the same drag
+   gesture, and there's no menu step standing between a kid and
+   placing something.
+   ============================================================ */
+const menuBtn = document.getElementById("menuBtn");
+const menuDropdown = document.getElementById("menuDropdown");
+const dock = document.getElementById("dock");
+
+menuBtn.addEventListener("click", (e)=>{
+  e.stopPropagation();
+  menuDropdown.classList.toggle("show");
+});
+document.addEventListener("click", ()=> menuDropdown.classList.remove("show"));
+menuDropdown.addEventListener("click", (e)=> e.stopPropagation());
+document.getElementById("backToAppBtn").addEventListener("click", ()=>{
+  location.href = "index.html?person=" + YOUSEI_PERSON; // お子さま おくすりサポート（メイン画面）へ
+});
+document.getElementById("triggerHappeningBtn").addEventListener("click", ()=>{
+  triggerHappening();
+  menuDropdown.classList.remove("show");
+});
+document.getElementById("toggleHitAreaBtn").addEventListener("click", ()=>{
+  const on = document.body.classList.toggle("debug-hitareas");
+  showHint(on ? "当たり判定を赤で表示中だよ" : "当たり判定の表示を消したよ");
+  menuDropdown.classList.remove("show");
+});
+document.getElementById("exportFlowersBtn").addEventListener("click", ()=>{
+  // gathers whatever flowers are currently placed in the editor and
+  // formats them exactly like START_FLOWERS above, so they can be pasted
+  // straight back in — same idea as the tool used to build the original
+  // 60-flower layout, just for however many flowers exist right now
+  // (handy for locating a single centered "main" flower for the redesigned
+  // gutflora happening).
+  const flowers = state.objects.filter(o => o.type === "flower");
+  menuDropdown.classList.remove("show");
+  if(flowers.length === 0){
+    showHint("花が1つも置かれていないよ");
+    return;
+  }
+  const code = "const START_FLOWERS = [\n" +
+    flowers.map(f => {
+      const petals = f.dom.querySelector(".flower-petals");
+      const color = petals ? petals.getAttribute("fill") : null;
+      return `  { x: ${Math.round(f.x)}, y: ${Math.round(f.y)}, sx: ${f.sx.toFixed(2)}, sy: ${f.sy.toFixed(2)}${color ? `, color:"${color}"` : ""} }`;
+    }).join(",\n") +
+    "\n];";
+  console.log(code);
+  window.prompt(`花${flowers.length}個ぶんのコードだよ。コピーしてClaudeに貼ってね（コンソールにも出力済み）`, code);
+});
+
+/* ---- temporary debug tool: quickly add a fairy to preview its design.
+   These are REAL fairies now — persisted exactly like a gacha draw, with
+   a real "y" id — rather than a disposable throwaway copy, so the normal
+   "しまう" button on the info panel and the fairy album both work on them
+   too (earlier they silently did nothing, since those features only
+   recognise "y"-prefixed ids — which is also the bug the person reported
+   as "the put-away button doesn't show up"). Manage/remove these the same
+   way as any other fairy from here on — the info panel's store button, or
+   the fairy album. Cycles through every base type in turn so repeated
+   clicks show each one once before repeating. Safe to delete later. ---- */
+const DEBUG_FAIRY_TYPES = ["widecillin","cefditoren","tomiron","clarithromycin","sankaMg","biofermin","carbocisteine","domperidone","calonal","special1"];
+let debugFairyCycle = 0;
+document.getElementById("addDebugFairyBtn").addEventListener("click", ()=>{
+  const type = DEBUG_FAIRY_TYPES[debugFairyCycle % DEBUG_FAIRY_TYPES.length];
+  debugFairyCycle++;
+  const rec = makeFairyRecord(type, {x:2700, y:2700});
+  const st = loadYouseiSharedState();
+  const shownNow = st.fairies.filter(f => !f.hidden).length;
+  rec.hidden = shownNow >= DISPLAY_CAP; // same cap rule a real gacha draw follows
+  st.fairies.push(rec);
+  saveYouseiSharedState(st);
+  if(!rec.hidden) enqueueBoatArrival(rec);
+  else showHint(`${FAIRY_TYPES[type].name}をずかんに追加したよ（島がいっぱいなので）`);
+  menuDropdown.classList.remove("show");
+});
+
+function deselectTool(){
+  state.placingType = null;
+  document.body.classList.remove("erase-mode", "editing");
+  [...palette.children].forEach(c=>c.classList.remove("active"));
+  if(placeDrag){ placeDrag.ghost.remove(); placeDrag = null; }
+  if(pathDraft){ pathDraft.dom.remove(); pathDraft = null; }
+}
+
+const palette = document.getElementById("palette");
+const PALETTE_ITEMS = {...OBJECT_TYPES, path:{emoji:"🟫", label:"みち"}, move:{emoji:"✋", label:"うごかす"}, eraser:{emoji:"🧹", label:"けす"}};
+const ICON_PREVIEWS = {
+  tree:    {build:buildTree,           viewBox:"-18 -55 36 66"},
+  flower:  {build:buildFlower,         viewBox:"-18 -23 36 35"},
+  grass:   {build:buildGrass,          viewBox:"-16 -32 32 42"},
+  house:   {build:buildHouse,          viewBox:"-33 -43 66 76"},
+  fence:   {build:buildFence,          viewBox:"-22 -19 44 40"},
+  fenceV:  {build:buildFenceV,         viewBox:"-14 -22 28 52"},
+  path:    {build:buildPathIconPreview,viewBox:"-18 -16 36 32"}
+};
+Object.entries(PALETTE_ITEMS).forEach(([key, info])=>{
+  if(info.hiddenFromPalette) return; // rock/spiderweb/whirlpool/hotspring: happening-only, not player-placeable
+  const item = document.createElement("div");
+  item.className = "palette-item" + (key === "eraser" ? " eraser" : "");
+  const preview = ICON_PREVIEWS[key];
+  if(preview){
+    // show the actual in-game artwork, not a generic emoji, so the
+    // palette always matches what really gets placed on the island
+    const iconSvg = document.createElementNS(SVGNS, "svg");
+    iconSvg.setAttribute("viewBox", preview.viewBox);
+    iconSvg.setAttribute("class", "palette-icon-svg");
+    iconSvg.appendChild(preview.build());
+    item.appendChild(iconSvg);
+  } else {
+    item.appendChild(document.createTextNode(info.emoji));
+  }
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = info.label;
+  item.appendChild(label);
+  item.addEventListener("click", ()=>{
+    const isActive = item.classList.contains("active");
+    if(isActive){
+      deselectTool();
+      showHint("モードを終了したよ");
+      return;
+    }
+    deselectTool();
+    item.classList.add("active");
+    state.placingType = key;
+    document.body.classList.add("editing");
+    if(key === "eraser"){
+      document.body.classList.add("erase-mode");
+      showHint("消したいものをタップしてね");
+    } else if(key === "move"){
+      document.body.classList.add("erase-mode"); // reuse: makes placed-obj tappable/draggable outside edit mode
+      showHint("うごかしたいものをつまんで動かしてね");
+    } else if(key === "path"){
+      showHint("島の上をなぞって道を描いてね");
+    } else {
+      showHint(info.label + "を島にドラッグして置いてね");
+    }
+  });
+  palette.appendChild(item);
+});
+
+/* ============================================================
+   10. CAMERA FIT
+   ============================================================ */
+const ZOOM_STEP = 1.25;
+// the old range was 0.35–6.25 with camScale=1 being "fit the whole island
+// on screen". History: loosened the zoomed-out floor by one step (5→4
+// presses' worth) twice now since it kept feeling one notch too tight;
+// the zoomed-in ceiling has come down two steps from its old "double"
+// value since it wasn't needed that deep.
+const ZOOM_MIN = Math.pow(ZOOM_STEP, 4); // ≈2.44
+const ZOOM_MAX = (6.25 * 2) / Math.pow(ZOOM_STEP, 2); // ≈8.0
+let baseScale = 1, camScale = ZOOM_MIN, camPanX = 0, camPanY = 0;
+const cameraEl = document.getElementById("camera");
+// the island's body (head/torso/arms/legs) only ever spans roughly
+// x:[1258,4142] y:[596,5303] in scene units — the old canvas (8400×8900)
+// was mostly empty sea far outside that, which is exactly what made the
+// map feel oversized. This is now cropped to a snug portrait box around
+// the body instead, with a comfortable margin. Must match the <svg>
+// width/height/viewBox above.
+const SCENE_W = 3600, SCENE_H = 5400;
+function clampPan(){
+  const wrap = document.getElementById("stage-wrap");
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  const scale = baseScale * camScale;
+  const maxX = Math.max(0, (SCENE_W*scale - w) / 2);
+  const maxY = Math.max(0, (SCENE_H*scale - h) / 2);
+  camPanX = clamp(camPanX, -maxX, maxX);
+  camPanY = clamp(camPanY, -maxY, maxY);
+}
+function applyCameraTransform(){
+  clampPan();
+  cameraEl.style.transform = `translate(-50%,-50%) translate(${camPanX}px,${camPanY}px) scale(${baseScale*camScale})`;
+}
+function fitCamera(){
+  const wrap = document.getElementById("stage-wrap");
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  baseScale = Math.min(w/SCENE_W, h/SCENE_H, 1.05);
+  applyCameraTransform();
+}
+window.addEventListener("resize", fitCamera);
+fitCamera();
+
+document.getElementById("zoomInBtn").addEventListener("click", ()=>{
+  camScale = clamp(camScale*ZOOM_STEP, ZOOM_MIN, ZOOM_MAX);
+  applyCameraTransform();
+});
+document.getElementById("zoomOutBtn").addEventListener("click", ()=>{
+  camScale = clamp(camScale/ZOOM_STEP, ZOOM_MIN, ZOOM_MAX);
+  applyCameraTransform();
+});
+// island-overview button: intentionally bypasses ZOOM_MIN — camScale=1 is
+// "fit the whole island in the viewport" (see fitCamera), independent of
+// the closer-in range the +/- buttons now work within.
+document.getElementById("zoomResetBtn").addEventListener("click", ()=>{
+  camScale = 1; camPanX = 0; camPanY = 0;
+  applyCameraTransform();
+  showHint("島全体を表示したよ");
+});
+
+showHint("妖精をドラッグして動かしてみよう");
+
+})();
+</script>
+</body>
+</html>
